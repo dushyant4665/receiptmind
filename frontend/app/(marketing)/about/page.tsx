@@ -58,7 +58,7 @@ export default function AboutPage() {
             - they stopped asking for new features and just sent us more receipts.
           </p>
           <p>
-            Today ReceiptMind processes millions of receipts for finance teams of all sizes. Our
+            Today ReceiptMind helps finance teams automate their expense workflows. Our
             goal hasn&apos;t changed: make expense management invisible so finance teams can focus
             on the work that actually matters.
           </p>
@@ -102,9 +102,9 @@ export default function AboutPage() {
                 </div>
                 <p className="mt-3 text-[14px] font-medium text-text-primary">{name}</p>
                 <p className="mt-1 text-[12px] text-text-muted">{role}</p>
-                <Link href="/" className="mt-2 inline-block text-[12px] text-amber transition-[color] hover:text-amber-hover">
+                <span className="mt-2 inline-block text-[12px] text-text-muted">
                   LinkedIn
-                </Link>
+                </span>
               </article>
             ))}
           </div>
@@ -113,15 +113,10 @@ export default function AboutPage() {
 
       <section className="px-4 py-12 md:px-8">
         <h2 className="text-center text-[13px] font-medium uppercase tracking-[0.08em] text-text-muted">
-          Backed by
+          Stage
         </h2>
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-x-12 gap-y-4">
-          {/* illustrative examples only */}
-          {["Y Combinator", "Sequoia", "Stripe"].map((name) => (
-            <span key={name} className="font-heading text-[20px] text-text-ghost">
-              {name}
-            </span>
-          ))}
+        <div className="mt-4 text-center">
+          <span className="font-heading text-[20px] text-text-ghost">Seed funded</span>
         </div>
       </section>
 

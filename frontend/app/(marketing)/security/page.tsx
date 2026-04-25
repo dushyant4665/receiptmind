@@ -1,10 +1,10 @@
 import { Check, KeyRound, Lock, ScrollText, ShieldCheck, TimerReset } from "lucide-react";
 
 const certificationCards = [
-  ["SOC 2 Type II", "Independently audited annually"],
+  ["SOC 2 Type II", "In progress - audit scheduled"],
   ["GDPR Compliant", "Full EU data rights support"],
   ["CCPA Ready", "California privacy compliance"],
-  ["99.9% Uptime", "SLA-backed availability"],
+  ["99.9% Uptime", "Target availability"],
 ];
 
 const featureSections = [

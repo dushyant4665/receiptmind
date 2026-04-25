@@ -457,6 +457,166 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Category Rules",
+      "item": [
+        {
+          "name": "List Rules",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}/api/v1/rules", "host": ["{{base_url}}"], "path": ["api", "v1", "rules"]},
+            "description": "List all category rules for the user (cached with Redis)"
+          }
+        },
+        {
+          "name": "Create Rule",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Office Supplies Auto-Categorize\",\n  \"priority\": 10,\n  \"condition_vendor\": \"Staples\",\n  \"action_category\": \"Office\",\n  \"action_subcategory\": \"Supplies\",\n  \"action_is_billable\": false\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/rules", "host": ["{{base_url}}"], "path": ["api", "v1", "rules"]},
+            "description": "Create a new auto-categorization rule"
+          }
+        },
+        {
+          "name": "Get Rule",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}/api/v1/rules/:id", "host": ["{{base_url}}"], "path": ["api", "v1", "rules", ":id"], "variable": [{"key": "id", "value": "rule-uuid"}]},
+            "description": "Get a specific rule by ID"
+          }
+        },
+        {
+          "name": "Update Rule",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Rule Name\",\n  \"is_active\": false\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/rules/:id", "host": ["{{base_url}}"], "path": ["api", "v1", "rules", ":id"], "variable": [{"key": "id", "value": "rule-uuid"}]},
+            "description": "Update a rule (partial updates supported)"
+          }
+        },
+        {
+          "name": "Delete Rule",
+          "request": {
+            "method": "DELETE",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}/api/v1/rules/:id", "host": ["{{base_url}}"], "path": ["api", "v1", "rules", ":id"], "variable": [{"key": "id", "value": "rule-uuid"}]},
+            "description": "Delete a rule"
+          }
+        },
+        {
+          "name": "Apply Rules to Receipt",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}/api/v1/rules/apply/:receipt_id", "host": ["{{base_url}}"], "path": ["api", "v1", "rules", "apply", ":receipt_id"], "variable": [{"key": "receipt_id", "value": "receipt-uuid"}]},
+            "description": "Manually trigger rule application on a receipt"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Exceptions Inbox",
+      "item": [
+        {
+          "name": "List Exceptions",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {
+              "raw": "{{base_url}}/api/v1/exceptions?status=open&limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "exceptions"],
+              "query": [
+                {"key": "status", "value": "open"},
+                {"key": "type", "value": ""},
+                {"key": "severity", "value": ""},
+                {"key": "limit", "value": "50"},
+                {"key": "offset", "value": "0"}
+              ]
+            },
+            "description": "List exceptions with filters. Types: low_confidence, duplicate_suspected, amount_anomaly, missing_date, missing_vendor, policy_violation, unmatched_transaction, missing_receipt"
+          }
+        },
+        {
+          "name": "Exception Stats",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}/api/v1/exceptions/stats", "host": ["{{base_url}}"], "path": ["api", "v1", "exceptions", "stats"]},
+            "description": "Get exception statistics (open_count, high_severity_count, etc.)"
+          }
+        },
+        {
+          "name": "Get Exception",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}/api/v1/exceptions/:id", "host": ["{{base_url}}"], "path": ["api", "v1", "exceptions", ":id"], "variable": [{"key": "id", "value": "exception-uuid"}]},
+            "description": "Get exception details with associated receipt"
+          }
+        },
+        {
+          "name": "Resolve Exception",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"},
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resolution_notes\": \"Fixed vendor name and confirmed amount\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/exceptions/:id/resolve", "host": ["{{base_url}}"], "path": ["api", "v1", "exceptions", ":id", "resolve"], "variable": [{"key": "id", "value": "exception-uuid"}]},
+            "description": "Mark an exception as resolved"
+          }
+        },
+        {
+          "name": "Dismiss Exception",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {"raw": "{{base_url}}/api/v1/exceptions/:id/dismiss", "host": ["{{base_url}}"], "path": ["api", "v1", "exceptions", ":id", "dismiss"], "variable": [{"key": "id", "value": "exception-uuid"}]},
+            "description": "Dismiss an exception (mark as dismissed without fixing)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Real-time (SSE)",
+      "item": [
+        {
+          "name": "Stream Receipt Status",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{access_token}}"}],
+            "url": {
+              "raw": "{{base_url}}/api/v1/sse/stream?receipt_id=:receipt_id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "sse", "stream"],
+              "query": [{"key": "receipt_id", "value": "receipt-uuid"}]
+            },
+            "description": "Server-Sent Events stream for real-time receipt processing status. Returns: pending -> extracting -> extracted -> categorized. Auto-closes when processing completes or after 5 min timeout."
+          }
+        }
+      ]
     }
   ],
   "event": [

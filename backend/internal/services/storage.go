@@ -52,17 +52,18 @@ func NewStorageService(_ context.Context) (*StorageService, error) {
 	}, nil
 }
 
-func (s *StorageService) UploadReceiptFile(ctx context.Context, userID string, fileHeader *multipart.FileHeader) (string, int64, string, error) {
+func (s *StorageService) UploadReceiptFile(ctx context.Context, userID string, fileHeader *multipart.FileHeader) (string, int64, string, []byte, error) {
 	f, err := fileHeader.Open()
 	if err != nil {
-		return "", 0, "", err
+		return "", 0, "", nil, err
 	}
 	defer f.Close()
 
 	buf := new(bytes.Buffer)
 	if _, err := io.Copy(buf, f); err != nil {
-		return "", 0, "", err
+		return "", 0, "", nil, err
 	}
+	fileData := buf.Bytes()
 
 	contentType := fileHeader.Header.Get("Content-Type")
 	if contentType == "" {
@@ -72,9 +73,9 @@ func (s *StorageService) UploadReceiptFile(ctx context.Context, userID string, f
 	objectPath := path.Join("receipts", userID, time.Now().Format("2006/01/02"), uuid.NewString()+"_"+sanitizeFilename(fileHeader.Filename))
 	uploadURL := fmt.Sprintf("%s/storage/v1/object/%s/%s", s.baseURL, s.bucket, objectPath)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, bytes.NewReader(buf.Bytes()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, bytes.NewReader(fileData))
 	if err != nil {
-		return "", 0, "", err
+		return "", 0, "", nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+s.serviceRoleKey)
 	req.Header.Set("apikey", s.serviceRoleKey)
@@ -83,17 +84,17 @@ func (s *StorageService) UploadReceiptFile(ctx context.Context, userID string, f
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return "", 0, "", err
+		return "", 0, "", nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		return "", 0, "", fmt.Errorf("supabase storage upload failed: %s", strings.TrimSpace(string(body)))
+		return "", 0, "", nil, fmt.Errorf("supabase storage upload failed: %s", strings.TrimSpace(string(body)))
 	}
 
 	publicReference := fmt.Sprintf("supabase://%s/%s", s.bucket, objectPath)
-	return publicReference, fileHeader.Size, contentType, nil
+	return publicReference, fileHeader.Size, contentType, fileData, nil
 }
 
 func (s *StorageService) CreateSignedURL(ctx context.Context, objectPath string, expiresInSeconds int) (string, error) {

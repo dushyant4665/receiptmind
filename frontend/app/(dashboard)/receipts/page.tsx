@@ -2,10 +2,53 @@
 
 import Link from "next/link";
 import { useDeferredValue, useState } from "react";
+import { Download } from "lucide-react";
 import { SectionHeading } from "@/components/common/section-heading";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { UploadDropzone } from "@/components/expenses/upload-dropzone";
 import { useReceipts } from "@/hooks/use-receipts";
+import { useSession } from "next-auth/react";
+import { getApiUrl } from "@/lib/env";
+
+function CSVExportButton() {
+  const { data: session } = useSession();
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (!session?.accessToken) return;
+    setDownloading(true);
+    try {
+      const response = await fetch(`${getApiUrl()}/receipts/export/csv`, {
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `receipts_${new Date().toISOString().split("T")[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (error) {
+      console.error("Failed to download CSV:", error);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" onClick={handleDownload} disabled={downloading}>
+      <Download className="mr-2 size-4" />
+      {downloading ? "Downloading..." : "Export CSV"}
+    </Button>
+  );
+}
 
 export default function ReceiptsPage() {
   const [query, setQuery] = useState("");
@@ -55,7 +98,10 @@ export default function ReceiptsPage() {
               <option value="processing">Processing</option>
             </select>
           </div>
-          <span className="text-[12px] text-text-muted">{rows.length} receipts</span>
+          <div className="flex items-center gap-3">
+            <span className="text-[12px] text-text-muted">{rows.length} receipts</span>
+            <CSVExportButton />
+          </div>
         </div>
         <div className="mt-5 overflow-hidden rounded-[12px] border border-border-default">
           <table className="w-full">

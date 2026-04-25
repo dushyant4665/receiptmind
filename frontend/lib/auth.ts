@@ -50,24 +50,6 @@ function normalizeAuthResponse(payload: BackendAuthResponse) {
   };
 }
 
-function buildDemoUser(email: string) {
-  const localPart = email.split("@")[0] || "demo";
-  const displayName = localPart
-    .split(/[.\-_]/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-
-  return {
-    id: "demo-user",
-    email,
-    name: displayName || "Demo User",
-    role: "admin",
-    accessToken: "demo-access-token",
-    refreshToken: "demo-refresh-token",
-  };
-}
-
 export const authOptions: NextAuthOptions = {
   secret: getNextAuthSecret(),
   session: {
@@ -90,23 +72,19 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Invalid credentials payload.");
         }
 
-        try {
-          const response = await fetch(`${API_URL}/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(parsed.data),
-          });
+        const response = await fetch(`${API_URL}/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(parsed.data),
+        });
 
-          if (!response.ok) {
-            const message = response.status === 401 ? "Invalid email or password." : "Unable to sign in.";
-            throw new Error(message);
-          }
-
-          const payload = (await response.json()) as BackendAuthResponse;
-          return normalizeAuthResponse(payload);
-        } catch {
-          return buildDemoUser(parsed.data.email);
+        if (!response.ok) {
+          const message = response.status === 401 ? "Invalid email or password." : "Unable to sign in.";
+          throw new Error(message);
         }
+
+        const payload = (await response.json()) as BackendAuthResponse;
+        return normalizeAuthResponse(payload);
       },
     }),
   ],

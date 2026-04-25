@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
-	"github.com/joho/godotenv"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/joho/godotenv"
 
 	"github.com/receiptmind/backend/internal/cache"
 	"github.com/receiptmind/backend/internal/config"
@@ -42,6 +43,7 @@ func main() {
 
 	authService := services.NewAuthService()
 	openAIService := services.NewOpenAIService()
+	geminiService := services.NewGeminiService()
 
 	storageService, err := services.NewStorageService(context.Background())
 	if err != nil {
@@ -54,6 +56,7 @@ func main() {
 		authService:    authService,
 		storageService: storageService,
 		openAIService:  openAIService,
+		geminiService:  geminiService,
 		redisCache:     redisCache,
 		runtimeConfig:  runtimeConfig,
 	})

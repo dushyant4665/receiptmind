@@ -233,6 +233,33 @@ func (h *AuthHandler) Refresh(c *fiber.Ctx) error {
 	return c.JSON(AuthResponse{AccessToken: accessToken, RefreshToken: newRefreshToken, ExpiresIn: 900, User: user})
 }
 
+type ForgotPasswordRequest struct {
+	Email string `json:"email"`
+}
+
+func (h *AuthHandler) ForgotPassword(c *fiber.Ctx) error {
+	var req ForgotPasswordRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	if req.Email == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Email is required"})
+	}
+
+	// Check if user exists
+	var userID uuid.UUID
+	err := h.db.DB.QueryRow(`SELECT id FROM users WHERE email = $1`, strings.ToLower(req.Email)).Scan(&userID)
+	if err != nil {
+		// Don't reveal if email exists or not
+		return c.JSON(fiber.Map{"success": true, "message": "If the email exists, a reset link has been sent"})
+	}
+
+	// TODO: Generate reset token and send email
+	// For now, return success to prevent email enumeration
+	return c.JSON(fiber.Map{"success": true, "message": "If the email exists, a reset link has been sent"})
+}
+
 func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 	var req RefreshRequest
 	_ = c.BodyParser(&req)

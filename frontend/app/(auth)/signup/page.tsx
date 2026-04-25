@@ -63,17 +63,11 @@ export default function SignupPage() {
           setIsSubmitting(true);
 
           try {
-            let usedDemoMode = false;
-
-            try {
-              await postApiData("/auth/register", {
-                name,
-                email,
-                password,
-              });
-            } catch {
-              usedDemoMode = true;
-            }
+            await postApiData("/auth/register", {
+              name,
+              email,
+              password,
+            });
 
             const result = await signIn("credentials", {
               email,
@@ -85,7 +79,7 @@ export default function SignupPage() {
               throw new Error(result?.error ?? "Unable to sign in after registration.");
             }
 
-            toast.success(usedDemoMode ? "Demo account created." : "Account created.");
+            toast.success("Account created.");
             router.push("/dashboard");
             router.refresh();
           } catch (error) {

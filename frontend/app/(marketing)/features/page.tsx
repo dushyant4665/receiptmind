@@ -4,7 +4,7 @@ import { Check } from "lucide-react";
 const featureSections = [
   {
     eyebrow: "Extraction",
-    title: "99.2% accuracy on every receipt",
+    title: "High accuracy extraction on every receipt",
     body:
       "Our AI reads receipts from any angle, in any language. Crumpled paper, phone screenshots, forwarded emails - it extracts vendor, amount, date, category, and tax fields with enterprise-grade precision.",
     bullets: [
@@ -155,7 +155,7 @@ const featureSections = [
     body:
       "Every file is encrypted at rest with AES-256 and in transit with TLS 1.3. Role-based access controls ensure junior staff see only what they need to. Full audit log for every action.",
     bullets: [
-      "SOC 2 Type II certified",
+      "SOC 2 Type II in progress",
       "AES-256 encryption at rest",
       "TLS 1.3 in transit",
       "Role-based access (Admin, Editor, Viewer)",
@@ -207,7 +207,7 @@ const integrations = [
 
 const comparisonRows = [
   ["Time per receipt", "3-5 minutes", "30 seconds"],
-  ["Accuracy", "~78%", "99.2%"],
+  ["Accuracy", "~78%", "96%+"],
   ["Accounting format", "Inconsistent", "Always clean"],
   ["Bulk processing", "One at a time", "Up to 100 files"],
   ["Gmail auto-fetch", "Manual", "Automatic"],

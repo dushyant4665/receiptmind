@@ -3,13 +3,36 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Check } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { postApiData } from "@/lib/api-client";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!email) {
+      toast.error("Please enter your email address");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      await postApiData("/auth/forgot-password", { email });
+      setSent(true);
+      toast.success("Reset link sent if the email exists");
+    } catch {
+      toast.error("Unable to process request. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="w-full max-w-[400px] rounded-[12px] border border-border-default bg-bg-surface p-8">
@@ -32,21 +55,15 @@ export default function ForgotPasswordPage() {
 
       {!sent ? (
         <>
-          <form
-            className="space-y-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setSent(true);
-            }}
-          >
+          <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
               <Label htmlFor="email" className="mb-1.5 text-[12px] font-medium text-text-secondary">
                 Work email
               </Label>
               <Input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
             </div>
-            <Button type="submit" variant="amber" className="w-full">
-              Send reset link
+            <Button type="submit" variant="amber" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Sending..." : "Send reset link"}
             </Button>
           </form>
           <p className="mt-5">
@@ -62,11 +79,15 @@ export default function ForgotPasswordPage() {
           </div>
           <h2 className="text-[18px] font-medium text-text-primary">Check your inbox</h2>
           <p className="mt-2 text-[13px] leading-[1.6] text-text-muted">
-            We sent a reset link to {email || "your email"}. It expires in 15 minutes.
+            If an account exists for {email || "that email"}, you will receive a reset link shortly.
           </p>
           <p className="mt-4">
-            <button type="button" className="text-[13px] text-amber transition-[color] hover:text-amber-hover">
-              Didn&apos;t receive it? Resend
+            <button
+              type="button"
+              onClick={() => setSent(false)}
+              className="text-[13px] text-amber transition-[color] hover:text-amber-hover"
+            >
+              Try another email
             </button>
           </p>
         </div>

@@ -28,6 +28,7 @@ type appDependencies struct {
 	authService    *services.AuthService
 	storageService *services.StorageService
 	openAIService  *services.OpenAIService
+	geminiService  *services.GeminiService
 	redisCache     *cache.RedisCache
 	runtimeConfig  config.RuntimeConfig
 }
@@ -77,8 +78,12 @@ func newApp(deps appDependencies) *fiber.App {
 	authHandler := handlers.NewAuthHandler(deps.db, deps.authService, deps.redisCache)
 	userHandler := handlers.NewUserHandler(deps.db)
 	expenseHandler := handlers.NewExpenseHandler(deps.db, deps.redisCache)
-	receiptHandler := handlers.NewReceiptHandler(deps.db, deps.redisCache, deps.storageService, deps.openAIService)
+	receiptHandler := handlers.NewReceiptHandler(deps.db, deps.redisCache, deps.storageService, deps.openAIService, deps.geminiService)
 	dashboardHandler := handlers.NewDashboardHandler(deps.db, deps.redisCache, deps.runtimeConfig.DashboardCacheTTL)
+	categoryRulesHandler := handlers.NewCategoryRulesHandler(deps.db, deps.redisCache)
+	exceptionsHandler := handlers.NewExceptionsHandler(deps.db, deps.redisCache)
+	sseHandler := handlers.NewSSEHandler(deps.db, deps.redisCache)
+	stripeHandler := handlers.NewStripeHandler()
 
 	app.Get("/health", func(c *fiber.Ctx) error {
 		c.Set(fiber.HeaderCacheControl, "no-store")
@@ -129,8 +134,12 @@ func newApp(deps appDependencies) *fiber.App {
 	auth.Post("/login", authHandler.Login)
 	auth.Post("/refresh", authHandler.Refresh)
 	auth.Post("/logout", authHandler.Logout)
+	auth.Post("/forgot-password", authHandler.ForgotPassword)
 
 	protected := api.Group("/", middleware.AuthMiddleware(deps.authService))
+
+	// Stripe checkout (requires auth)
+	protected.Post("/checkout", stripeHandler.CreateCheckout)
 	protected.Get("/users/me", userHandler.GetMe)
 	protected.Put("/users/me", userHandler.UpdateMe)
 
@@ -139,6 +148,7 @@ func newApp(deps appDependencies) *fiber.App {
 	receipts.Get("/", receiptHandler.List)
 	receipts.Get("/:id", receiptHandler.Get)
 	receipts.Delete("/:id", receiptHandler.Delete)
+	receipts.Get("/export/csv", receiptHandler.ExportCSV)
 
 	expenses := protected.Group("/expenses")
 	expenses.Post("/", expenseHandler.CreateExpense)
@@ -150,6 +160,25 @@ func newApp(deps appDependencies) *fiber.App {
 	dashboard := protected.Group("/dashboard")
 	dashboard.Get("/stats", dashboardHandler.Stats)
 	dashboard.Get("/activity", dashboardHandler.Activity)
+
+	rules := protected.Group("/rules")
+	rules.Get("/", categoryRulesHandler.List)
+	rules.Post("/", categoryRulesHandler.Create)
+	rules.Get("/:id", categoryRulesHandler.Get)
+	rules.Put("/:id", categoryRulesHandler.Update)
+	rules.Delete("/:id", categoryRulesHandler.Delete)
+	rules.Post("/apply/:receipt_id", categoryRulesHandler.Apply)
+
+	exceptions := protected.Group("/exceptions")
+	exceptions.Get("/", exceptionsHandler.List)
+	exceptions.Get("/stats", exceptionsHandler.GetStats)
+	exceptions.Get("/:id", exceptionsHandler.Get)
+	exceptions.Post("/", exceptionsHandler.Create)
+	exceptions.Post("/:id/resolve", exceptionsHandler.Resolve)
+	exceptions.Post("/:id/dismiss", exceptionsHandler.Dismiss)
+
+	sse := protected.Group("/sse")
+	sse.Get("/stream", sseHandler.Stream)
 
 	return app
 }

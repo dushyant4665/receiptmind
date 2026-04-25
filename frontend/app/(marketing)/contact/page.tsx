@@ -9,19 +9,19 @@ const contactCards = [
     icon: BriefcaseBusiness,
     title: "Talk to sales",
     body: "Get a demo, custom pricing, or answers about the Enterprise plan.",
-    action: "Book a 20-min call ->",
+    action: "Coming soon",
   },
   {
     icon: MessageCircle,
     title: "Get support",
     body: "For Pro users - typical response time under 2 hours.",
-    action: "Open a support ticket ->",
+    action: "Coming soon",
   },
   {
     icon: Mail,
     title: "General enquiries",
     body: "For press, partnerships, or anything else.",
-    email: "hello@receiptmind.com",
+    email: "hello@receiptmind.io",
   },
 ];
 
@@ -53,14 +53,10 @@ export default function ContactPage() {
                 </div>
                 <h2 className="text-[14px] font-medium text-text-primary">{card.title}</h2>
                 <p className="mt-2 text-[13px] leading-[1.6] text-text-muted">{card.body}</p>
-                {card.action ? (
-                  <p className="mt-4">
-                    <Link href="/contact" className="text-[13px] text-amber transition-[color] hover:text-amber-hover">
-                      {card.action}
-                    </Link>
-                  </p>
-                ) : (
+                {card.email ? (
                   <p className="mt-4 font-mono text-[12px] text-amber">{card.email}</p>
+                ) : (
+                  <p className="mt-4 text-[13px] text-text-muted">{card.action}</p>
                 )}
               </article>
             ))}
@@ -68,7 +64,7 @@ export default function ContactPage() {
 
           <div className="rounded-[12px] border border-border-default bg-bg-surface p-7">
             <h2 className="text-[15px] font-medium text-text-primary">Send us a message</h2>
-            <form className="mt-6 space-y-4">
+            <form className="mt-6 space-y-4" onSubmit={(e) => { e.preventDefault(); alert('Contact form coming soon. Please email hello@receiptmind.io'); }}>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <Label htmlFor="firstName" className="mb-1.5 text-[12px] font-medium text-text-secondary">

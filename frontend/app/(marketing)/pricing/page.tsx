@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { Fragment, useState } from "react";
-import { Check, Minus, Plus } from "lucide-react";
+import { Check, Minus, Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { postApiData } from "@/lib/api-client";
+import { toast } from "sonner";
 
 const pricingPlans = {
   monthly: {
@@ -157,7 +159,24 @@ function FeatureCell({ value }: { value: string }) {
 export default function PricingPage() {
   const [yearly, setYearly] = useState(false);
   const [openIndex, setOpenIndex] = useState<number | null>(0);
+  const [isLoading, setIsLoading] = useState(false);
   const prices = yearly ? pricingPlans.yearly : pricingPlans.monthly;
+
+  const handleCheckout = async (plan: string) => {
+    setIsLoading(true);
+    try {
+      const response = await postApiData<{ url: string }>("/checkout", {
+        plan: plan === "yearly" ? "pro_yearly" : "pro_monthly",
+      });
+      if (response.url) {
+        window.location.href = response.url;
+      }
+    } catch {
+      toast.error("Failed to start checkout. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <main className="bg-bg-page">
@@ -251,9 +270,27 @@ export default function PricingPage() {
                     </li>
                   ))}
                 </ul>
-                <Button asChild variant={plan.featured ? "default" : "ghost"} className="mt-5 w-full">
-                  <Link href={plan.href}>{plan.cta}</Link>
-                </Button>
+                {plan.name === "Pro" ? (
+                  <Button 
+                    variant={plan.featured ? "default" : "ghost"} 
+                    className="mt-5 w-full"
+                    onClick={() => handleCheckout(yearly ? "yearly" : "monthly")}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 size-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      plan.cta
+                    )}
+                  </Button>
+                ) : (
+                  <Button asChild variant={plan.featured ? "default" : "ghost"} className="mt-5 w-full">
+                    <Link href={plan.href}>{plan.cta}</Link>
+                  </Button>
+                )}
               </article>
             );
           })}
