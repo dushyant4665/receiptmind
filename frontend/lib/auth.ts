@@ -1,13 +1,14 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { z } from "zod";
+import { getApiUrl, getNextAuthSecret } from "@/lib/env";
 
 const credentialsSchema = z.object({
   email: z.email(),
   password: z.string().min(8),
 });
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api/v1";
+const API_URL = getApiUrl();
 
 type BackendAuthResponse = {
   access_token?: string;
@@ -68,6 +69,7 @@ function buildDemoUser(email: string) {
 }
 
 export const authOptions: NextAuthOptions = {
+  secret: getNextAuthSecret(),
   session: {
     strategy: "jwt",
   },

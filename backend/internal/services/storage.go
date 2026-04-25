@@ -30,7 +30,7 @@ type supabaseStorageObject struct {
 
 func NewStorageService(_ context.Context) (*StorageService, error) {
 	baseURL := strings.TrimRight(os.Getenv("SUPABASE_URL"), "/")
-	serviceRoleKey := os.Getenv("SUPABASE_SERVICE_ROLE_KEY")
+	serviceRoleKey := firstEnv("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SECRET_KEY", "SUPABASE_SERVICE_KEY", "SUPABASE_SECRET")
 	bucket := os.Getenv("SUPABASE_STORAGE_BUCKET")
 	if bucket == "" {
 		bucket = "receipt-files"
@@ -137,4 +137,13 @@ func (s *StorageService) CreateSignedURL(ctx context.Context, objectPath string,
 func sanitizeFilename(name string) string {
 	replacer := strings.NewReplacer("\\", "_", "/", "_", " ", "_")
 	return replacer.Replace(name)
+}
+
+func firstEnv(keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
+			return value
+		}
+	}
+	return ""
 }

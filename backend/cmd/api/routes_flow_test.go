@@ -110,7 +110,7 @@ func TestReceiptMindRouteFlow(t *testing.T) {
 
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO sessions (id, user_id, token_hash, expires_at, ip_address, user_agent, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, NOW())`)).
-			WithArgs(anyUUID{}, userID, anyString{}, anyTime{}, anyString{}, "").
+			WithArgs(anyUUID{}, userID, anyString{}, anyTime{}, anyNilOrString{}, anyNilOrString{}).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		registerResp := doJSONRequest(t, app, http.MethodPost, "/api/v1/auth/register", map[string]any{
@@ -145,7 +145,7 @@ func TestReceiptMindRouteFlow(t *testing.T) {
 
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO sessions (id, user_id, token_hash, expires_at, ip_address, user_agent, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, NOW())`)).
-			WithArgs(anyUUID{}, userID, anyString{}, anyTime{}, anyString{}, "").
+			WithArgs(anyUUID{}, userID, anyString{}, anyTime{}, anyNilOrString{}, anyNilOrString{}).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		loginResp := doJSONRequest(t, app, http.MethodPost, "/api/v1/auth/login", map[string]any{
@@ -499,6 +499,16 @@ type anyInt64 struct{}
 
 func (a anyInt64) Match(v driver.Value) bool {
 	_, ok := v.(int64)
+	return ok
+}
+
+type anyNilOrString struct{}
+
+func (a anyNilOrString) Match(v driver.Value) bool {
+	if v == nil {
+		return true
+	}
+	_, ok := v.(string)
 	return ok
 }
 

@@ -1,8 +1,9 @@
 import axios from "axios";
 import type { AxiosRequestConfig } from "axios";
 import type { ApiResponse } from "@/types";
+import { getApiUrl } from "@/lib/env";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080/api/v1";
+const API_BASE_URL = getApiUrl();
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,

@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"log"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -108,22 +109,11 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 	}
 
 	tokenHash, _ := h.auth.HashPassword(refreshToken)
-	refreshExpiry, _ := time.ParseDuration(os.Getenv("JWT_REFRESH_EXPIRY"))
-	if refreshExpiry == 0 {
-		refreshExpiry = 7 * 24 * time.Hour
-	}
-	expiresAt := time.Now().Add(refreshExpiry)
-	sessionID := uuid.New()
-	_, err = h.db.DB.Exec(
-		`INSERT INTO sessions (id, user_id, token_hash, expires_at, ip_address, user_agent, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-		sessionID, user.ID, tokenHash, expiresAt, c.IP(), c.Get("User-Agent"),
-	)
+	refreshExpiry := getRefreshExpiry()
+	err = h.storeSession(c, user.ID, tokenHash, refreshExpiry)
 	if err != nil {
 		log.Printf("Failed to store session: %v", err)
-	}
-	if h.cache != nil {
-		_ = h.cache.SetUserSession(user.ID.String(), sessionID.String(), refreshExpiry)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(AuthResponse{
@@ -168,19 +158,10 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	}
 
 	tokenHash, _ := h.auth.HashPassword(refreshToken)
-	refreshExpiry, _ := time.ParseDuration(os.Getenv("JWT_REFRESH_EXPIRY"))
-	if refreshExpiry == 0 {
-		refreshExpiry = 7 * 24 * time.Hour
-	}
-	expiresAt := time.Now().Add(refreshExpiry)
-	sessionID := uuid.New()
-	_, _ = h.db.DB.Exec(
-		`INSERT INTO sessions (id, user_id, token_hash, expires_at, ip_address, user_agent, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-		sessionID, user.ID, tokenHash, expiresAt, c.IP(), c.Get("User-Agent"),
-	)
-	if h.cache != nil {
-		_ = h.cache.SetUserSession(user.ID.String(), sessionID.String(), refreshExpiry)
+	refreshExpiry := getRefreshExpiry()
+	if err := h.storeSession(c, user.ID, tokenHash, refreshExpiry); err != nil {
+		log.Printf("Failed to store session: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create session"})
 	}
 
 	return c.JSON(AuthResponse{AccessToken: accessToken, RefreshToken: refreshToken, ExpiresIn: 900, User: user})
@@ -282,4 +263,56 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"success": true})
+}
+
+func (h *AuthHandler) storeSession(c *fiber.Ctx, userID uuid.UUID, tokenHash string, refreshExpiry time.Duration) error {
+	expiresAt := time.Now().Add(refreshExpiry)
+	sessionID := uuid.New()
+
+	_, err := h.db.DB.Exec(
+		`INSERT INTO sessions (id, user_id, token_hash, expires_at, ip_address, user_agent, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+		sessionID,
+		userID,
+		tokenHash,
+		expiresAt,
+		normalizedIPAddress(c.IP()),
+		optionalText(c.Get("User-Agent")),
+	)
+	if err != nil {
+		return err
+	}
+
+	if h.cache != nil {
+		_ = h.cache.SetUserSession(userID.String(), sessionID.String(), refreshExpiry)
+	}
+
+	return nil
+}
+
+func getRefreshExpiry() time.Duration {
+	refreshExpiry, _ := time.ParseDuration(os.Getenv("JWT_REFRESH_EXPIRY"))
+	if refreshExpiry == 0 {
+		refreshExpiry = 7 * 24 * time.Hour
+	}
+	return refreshExpiry
+}
+
+func normalizedIPAddress(raw string) interface{} {
+	ip := strings.TrimSpace(raw)
+	if ip == "" {
+		return nil
+	}
+	if parsed := net.ParseIP(ip); parsed != nil {
+		return parsed.String()
+	}
+	return nil
+}
+
+func optionalText(raw string) interface{} {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil
+	}
+	return value
 }
