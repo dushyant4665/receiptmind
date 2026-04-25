@@ -12,11 +12,12 @@ import (
 )
 
 type ExpenseHandler struct {
-	db *database.PostgresDB
+	db    *database.PostgresDB
+	cache cacheStore
 }
 
-func NewExpenseHandler(db *database.PostgresDB) *ExpenseHandler {
-	return &ExpenseHandler{db: db}
+func NewExpenseHandler(db *database.PostgresDB, cacheClient cacheStore) *ExpenseHandler {
+	return &ExpenseHandler{db: db, cache: normalizeCacheStore(cacheClient)}
 }
 
 func (h *ExpenseHandler) ListExpenses(c *fiber.Ctx) error {
@@ -91,6 +92,7 @@ func (h *ExpenseHandler) CreateExpense(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create expense"})
 	}
+	h.invalidateDashboardCache(userID)
 
 	var expense models.Expense
 	err = h.db.DB.QueryRow(
@@ -170,6 +172,7 @@ func (h *ExpenseHandler) UpdateExpense(c *fiber.Ctx) error {
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Not found"})
 	}
+	h.invalidateDashboardCache(userID)
 
 	return h.GetExpense(c)
 }
@@ -189,6 +192,14 @@ func (h *ExpenseHandler) DeleteExpense(c *fiber.Ctx) error {
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Not found"})
 	}
+	h.invalidateDashboardCache(userID)
 
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *ExpenseHandler) invalidateDashboardCache(userID string) {
+	if h.cache == nil {
+		return
+	}
+	_ = h.cache.DeleteByPrefix("dashboard:" + userID + ":")
 }

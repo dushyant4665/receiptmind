@@ -19,9 +19,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 
+	"github.com/receiptmind/backend/internal/config"
 	"github.com/receiptmind/backend/internal/database"
-	"github.com/receiptmind/backend/internal/handlers"
-	backendMiddleware "github.com/receiptmind/backend/internal/middleware"
 	"github.com/receiptmind/backend/internal/services"
 )
 
@@ -60,8 +59,14 @@ func TestReceiptMindRouteFlow(t *testing.T) {
 
 	testDB := &database.PostgresDB{DB: sqlDB}
 	authService := services.NewAuthService()
+	runtimeConfig := mustLoadTestRuntimeConfig(t)
 
-	app := newTestApp(testDB, authService, storageService)
+	app := newApp(appDependencies{
+		db:             testDB,
+		authService:    authService,
+		storageService: storageService,
+		runtimeConfig:  runtimeConfig,
+	})
 
 	userID := uuid.New()
 	sessionIDRegister := uuid.New()
@@ -74,6 +79,17 @@ func TestReceiptMindRouteFlow(t *testing.T) {
 	t.Run("health", func(t *testing.T) {
 		resp := doRequest(t, app, http.MethodGet, "/health", "", "")
 		assertStatus(t, resp, http.StatusOK)
+		if resp.Header.Get("X-Request-Id") == "" && resp.Header.Get("X-Request-ID") == "" {
+			t.Fatalf("expected request id header on health response")
+		}
+	})
+
+	t.Run("ready", func(t *testing.T) {
+		resp := doRequest(t, app, http.MethodGet, "/ready", "", "")
+		assertStatus(t, resp, http.StatusOK)
+		if resp.Header.Get("Cache-Control") != "no-store" {
+			t.Fatalf("expected readiness endpoint to disable caching")
+		}
 	})
 
 	t.Run("auth and protected flow", func(t *testing.T) {
@@ -94,7 +110,7 @@ func TestReceiptMindRouteFlow(t *testing.T) {
 
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO sessions (id, user_id, token_hash, expires_at, ip_address, user_agent, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, NOW())`)).
-			WithArgs(anyUUID{}, userID, anyString{}, anyTime{}, "0.0.0.0", "").
+			WithArgs(anyUUID{}, userID, anyString{}, anyTime{}, anyString{}, "").
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		registerResp := doJSONRequest(t, app, http.MethodPost, "/api/v1/auth/register", map[string]any{
@@ -129,7 +145,7 @@ func TestReceiptMindRouteFlow(t *testing.T) {
 
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO sessions (id, user_id, token_hash, expires_at, ip_address, user_agent, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, NOW())`)).
-			WithArgs(anyUUID{}, userID, anyString{}, anyTime{}, "0.0.0.0", "").
+			WithArgs(anyUUID{}, userID, anyString{}, anyTime{}, anyString{}, "").
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		loginResp := doJSONRequest(t, app, http.MethodPost, "/api/v1/auth/login", map[string]any{
@@ -376,49 +392,6 @@ func TestReceiptMindRouteFlow(t *testing.T) {
 	}
 }
 
-func newTestApp(db *database.PostgresDB, authService *services.AuthService, storage *services.StorageService) *fiber.App {
-	app := fiber.New()
-	authHandler := handlers.NewAuthHandler(db, authService, nil)
-	userHandler := handlers.NewUserHandler(db)
-	expenseHandler := handlers.NewExpenseHandler(db)
-	receiptHandler := handlers.NewReceiptHandler(db, storage, nil)
-	dashboardHandler := handlers.NewDashboardHandler(db)
-
-	app.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "ok"})
-	})
-
-	api := app.Group("/api/v1")
-	auth := api.Group("/auth")
-	auth.Post("/register", authHandler.Register)
-	auth.Post("/login", authHandler.Login)
-	auth.Post("/refresh", authHandler.Refresh)
-	auth.Post("/logout", authHandler.Logout)
-
-	protected := api.Group("/", backendMiddleware.AuthMiddleware(authService))
-	protected.Get("/users/me", userHandler.GetMe)
-	protected.Put("/users/me", userHandler.UpdateMe)
-
-	receipts := protected.Group("/receipts")
-	receipts.Post("/upload", receiptHandler.Upload)
-	receipts.Get("/", receiptHandler.List)
-	receipts.Get("/:id", receiptHandler.Get)
-	receipts.Delete("/:id", receiptHandler.Delete)
-
-	expenses := protected.Group("/expenses")
-	expenses.Post("/", expenseHandler.CreateExpense)
-	expenses.Get("/", expenseHandler.ListExpenses)
-	expenses.Get("/:id", expenseHandler.GetExpense)
-	expenses.Put("/:id", expenseHandler.UpdateExpense)
-	expenses.Delete("/:id", expenseHandler.DeleteExpense)
-
-	dashboard := protected.Group("/dashboard")
-	dashboard.Get("/stats", dashboardHandler.Stats)
-	dashboard.Get("/activity", dashboardHandler.Activity)
-
-	return app
-}
-
 func doJSONRequest(t *testing.T, app *fiber.App, method, path string, body any, authHeader string) *http.Response {
 	t.Helper()
 	raw, err := json.Marshal(body)
@@ -532,4 +505,14 @@ func (a anyInt64) Match(v driver.Value) bool {
 func TestMain(m *testing.M) {
 	code := m.Run()
 	os.Exit(code)
+}
+
+func mustLoadTestRuntimeConfig(t *testing.T) config.RuntimeConfig {
+	t.Helper()
+	t.Setenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
+	cfg, err := config.LoadRuntimeConfig()
+	if err != nil {
+		t.Fatalf("failed to load runtime config: %v", err)
+	}
+	return cfg
 }

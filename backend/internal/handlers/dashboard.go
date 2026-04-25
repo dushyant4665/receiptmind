@@ -1,21 +1,36 @@
 package handlers
 
 import (
+	"encoding/json"
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/receiptmind/backend/internal/database"
 )
 
 type DashboardHandler struct {
-	db *database.PostgresDB
+	db       *database.PostgresDB
+	cache    cacheStore
+	cacheTTL time.Duration
 }
 
-func NewDashboardHandler(db *database.PostgresDB) *DashboardHandler {
-	return &DashboardHandler{db: db}
+func NewDashboardHandler(db *database.PostgresDB, cacheClient cacheStore, cacheTTL time.Duration) *DashboardHandler {
+	return &DashboardHandler{db: db, cache: normalizeCacheStore(cacheClient), cacheTTL: cacheTTL}
 }
 
 func (h *DashboardHandler) Stats(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(string)
+	cacheKey := "dashboard:" + userID + ":stats"
+
+	if h.cache != nil {
+		cached, err := h.cache.Get(cacheKey)
+		if err == nil {
+			c.Set("X-Cache", "HIT")
+			c.Type("json")
+			return c.SendString(cached)
+		}
+	}
 
 	var totalSpent float64
 	var receiptCount int
@@ -25,18 +40,30 @@ func (h *DashboardHandler) Stats(c *fiber.Ctx) error {
 	_ = h.db.DB.QueryRow(`SELECT COUNT(*) FROM receipts WHERE user_id = $1`, userID).Scan(&receiptCount)
 	_ = h.db.DB.QueryRow(`SELECT COUNT(*) FROM expenses WHERE user_id = $1`, userID).Scan(&expenseCount)
 
-	return c.JSON(fiber.Map{
-		"total_spent":      totalSpent,
-		"receipt_count":    receiptCount,
-		"expense_count":    expenseCount,
-		"monthly_change":   12.5,
-		"accuracy_rate":    99.2,
-		"time_saved_hours": 8.5,
-	})
+	payload := fiber.Map{
+		"total_spent":   totalSpent,
+		"receipt_count": receiptCount,
+		"expense_count": expenseCount,
+	}
+	if h.cache != nil {
+		_ = h.cache.SetJSON(cacheKey, payload, h.cacheTTL)
+	}
+	c.Set("X-Cache", "MISS")
+	return c.JSON(payload)
 }
 
 func (h *DashboardHandler) Activity(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(string)
+	cacheKey := "dashboard:" + userID + ":activity"
+
+	if h.cache != nil {
+		cached, err := h.cache.Get(cacheKey)
+		if err == nil {
+			c.Set("X-Cache", "HIT")
+			c.Type("json")
+			return c.SendString(cached)
+		}
+	}
 
 	receiptsRows, _ := h.db.DB.Query(
 		`SELECT id::text, filename, created_at FROM receipts WHERE user_id=$1 ORDER BY created_at DESC LIMIT 10`,
@@ -58,5 +85,12 @@ func (h *DashboardHandler) Activity(c *fiber.Ctx) error {
 		}
 	}
 
+	if h.cache != nil {
+		raw, err := json.Marshal(activity)
+		if err == nil {
+			_ = h.cache.Set(cacheKey, raw, h.cacheTTL)
+		}
+	}
+	c.Set("X-Cache", "MISS")
 	return c.JSON(activity)
 }

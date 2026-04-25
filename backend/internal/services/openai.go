@@ -19,11 +19,17 @@ type OpenAIService struct {
 
 func NewOpenAIService() *OpenAIService {
 	apiKey := os.Getenv("OPENAI_API_KEY")
+	if strings.TrimSpace(apiKey) == "" {
+		return nil
+	}
 	client := openai.NewClient(apiKey)
 	return &OpenAIService{client: client}
 }
 
 func (o *OpenAIService) ExtractReceiptData(ctx context.Context, imageURL string) (*models.ReceiptExtractionResult, error) {
+	if o == nil || o.client == nil {
+		return nil, fmt.Errorf("openai client not configured")
+	}
 	prompt := `You are a receipt/invoice data extraction assistant. Extract the following fields from this receipt/invoice image and return ONLY a JSON object.
 
 Fields to extract:

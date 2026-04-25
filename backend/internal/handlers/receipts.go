@@ -14,12 +14,13 @@ import (
 
 type ReceiptHandler struct {
 	db      *database.PostgresDB
+	cache   cacheStore
 	storage *services.StorageService
 	openai  *services.OpenAIService
 }
 
-func NewReceiptHandler(db *database.PostgresDB, storage *services.StorageService, openai *services.OpenAIService) *ReceiptHandler {
-	return &ReceiptHandler{db: db, storage: storage, openai: openai}
+func NewReceiptHandler(db *database.PostgresDB, cacheClient cacheStore, storage *services.StorageService, openai *services.OpenAIService) *ReceiptHandler {
+	return &ReceiptHandler{db: db, cache: normalizeCacheStore(cacheClient), storage: storage, openai: openai}
 }
 
 func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
@@ -112,6 +113,7 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 			uploaded = append(uploaded, receipt)
 		}
 	}
+	h.invalidateDashboardCache(userID)
 
 	return c.JSON(fiber.Map{"receipts": uploaded})
 }
@@ -208,5 +210,13 @@ func (h *ReceiptHandler) Delete(c *fiber.Ctx) error {
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Not found"})
 	}
+	h.invalidateDashboardCache(userID)
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *ReceiptHandler) invalidateDashboardCache(userID string) {
+	if h.cache == nil {
+		return
+	}
+	_ = h.cache.DeleteByPrefix("dashboard:" + userID + ":")
 }

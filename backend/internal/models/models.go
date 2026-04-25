@@ -73,6 +73,43 @@ type APIKey struct {
 	CreatedAt  time.Time  `json:"created_at" db:"created_at"`
 }
 
+type CategoryRule struct {
+	ID                          uuid.UUID  `json:"id" db:"id"`
+	UserID                      uuid.UUID  `json:"user_id" db:"user_id"`
+	Name                        string     `json:"name" db:"name"`
+	Priority                    int        `json:"priority" db:"priority"`
+	ConditionVendor             string     `json:"condition_vendor,omitempty" db:"condition_vendor"`
+	ConditionAmountMin          *float64   `json:"condition_amount_min,omitempty" db:"condition_amount_min"`
+	ConditionAmountMax          *float64   `json:"condition_amount_max,omitempty" db:"condition_amount_max"`
+	ConditionDescriptionContains string    `json:"condition_description_contains,omitempty" db:"condition_description_contains"`
+	ActionCategory              string     `json:"action_category" db:"action_category"`
+	ActionSubcategory           string     `json:"action_subcategory,omitempty" db:"action_subcategory"`
+	ActionTaxCode               string     `json:"action_tax_code,omitempty" db:"action_tax_code"`
+	ActionIsBillable            *bool      `json:"action_is_billable,omitempty" db:"action_is_billable"`
+	ActionIsReimbursable        *bool      `json:"action_is_reimbursable,omitempty" db:"action_is_reimbursable"`
+	ActionNotes                 string     `json:"action_notes,omitempty" db:"action_notes"`
+	IsActive                    bool       `json:"is_active" db:"is_active"`
+	TimesApplied                int        `json:"times_applied" db:"times_applied"`
+	CreatedBy                   *uuid.UUID `json:"created_by,omitempty" db:"created_by"`
+	CreatedAt                   time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt                   time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+type Exception struct {
+	ID             uuid.UUID  `json:"id" db:"id"`
+	UserID         uuid.UUID  `json:"user_id" db:"user_id"`
+	ReceiptID      *uuid.UUID `json:"receipt_id,omitempty" db:"receipt_id"`
+	Type           string     `json:"type" db:"type"`
+	Severity       string     `json:"severity" db:"severity"`
+	Description    string     `json:"description" db:"description"`
+	SuggestedAction string    `json:"suggested_action,omitempty" db:"suggested_action"`
+	Status         string     `json:"status" db:"status"`
+	ResolvedBy     *uuid.UUID `json:"resolved_by,omitempty" db:"resolved_by"`
+	ResolvedAt     *time.Time `json:"resolved_at,omitempty" db:"resolved_at"`
+	ResolutionNotes string    `json:"resolution_notes,omitempty" db:"resolution_notes"`
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+}
+
 type AuditLog struct {
 	ID         uuid.UUID       `json:"id" db:"id"`
 	UserID     *uuid.UUID      `json:"user_id,omitempty" db:"user_id"`

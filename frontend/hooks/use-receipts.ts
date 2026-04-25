@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
 import { getApiData } from "@/lib/api-client";
-import { getDemoReceipts } from "@/lib/demo-data";
 import type { Receipt } from "@/types";
 
 type BackendReceipt = {
@@ -50,15 +49,11 @@ export function useReceipts() {
     queryKey: ["receipts", session?.accessToken],
     enabled: status === "authenticated" && Boolean(session?.accessToken),
     queryFn: async () => {
-      try {
-        const receipts = await getApiData<BackendReceipt[]>("/receipts", {
-          authToken: session?.accessToken,
-        });
+      const receipts = await getApiData<BackendReceipt[]>("/receipts", {
+        authToken: session?.accessToken,
+      });
 
-        return receipts.map(mapReceipt);
-      } catch {
-        return getDemoReceipts();
-      }
+      return receipts.map(mapReceipt);
     },
   });
 }
@@ -70,15 +65,11 @@ export function useReceipt(receiptId: string) {
     queryKey: ["receipt", session?.accessToken, receiptId],
     enabled: status === "authenticated" && Boolean(session?.accessToken) && Boolean(receiptId),
     queryFn: async () => {
-      try {
-        const receipt = await getApiData<BackendReceipt>(`/receipts/${receiptId}`, {
-          authToken: session?.accessToken,
-        });
+      const receipt = await getApiData<BackendReceipt>(`/receipts/${receiptId}`, {
+        authToken: session?.accessToken,
+      });
 
-        return mapReceipt(receipt);
-      } catch {
-        return getDemoReceipts().find((receipt) => receipt.id === receiptId) ?? null;
-      }
+      return mapReceipt(receipt);
     },
   });
 }

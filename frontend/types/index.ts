@@ -42,9 +42,6 @@ export type DashboardStats = {
   totalSpent: number;
   receiptCount: number;
   expenseCount: number;
-  monthlyChange: number;
-  accuracyRate: number;
-  timeSavedHours: number;
 };
 
 export type DashboardActivity = {

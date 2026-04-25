@@ -8,7 +8,6 @@ import { UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { uploadApiData } from "@/lib/api-client";
-import { appendDemoReceipts } from "@/lib/demo-data";
 
 type UploadResponse = {
   receipts: Array<{ id: string }>;
@@ -54,14 +53,9 @@ export function UploadDropzone() {
       queryClient.invalidateQueries({ queryKey: ["receipts"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-activity"] });
-    } catch (error) {
-      console.error(error);
-      appendDemoReceipts(files);
-      setProgress(100);
-      toast.success("Upload completed in demo mode.");
-      queryClient.invalidateQueries({ queryKey: ["receipts"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-activity"] });
+    } catch {
+      toast.error("Upload failed. Please try again.");
+      setProgress(0);
     } finally {
       setIsUploading(false);
       if (inputRef.current) {

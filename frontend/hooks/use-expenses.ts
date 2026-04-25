@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
 import { getApiData } from "@/lib/api-client";
-import { getDemoExpenses } from "@/lib/demo-data";
 import type { Expense } from "@/types";
 
 type BackendExpense = {
@@ -37,15 +36,11 @@ export function useExpenses(query = "") {
     queryKey: ["expenses", session?.accessToken, query],
     enabled: status === "authenticated" && Boolean(session?.accessToken),
     queryFn: async () => {
-      try {
-        const expenses = await getApiData<BackendExpense[]>("/expenses", {
-          authToken: session?.accessToken,
-        });
+      const expenses = await getApiData<BackendExpense[]>("/expenses", {
+        authToken: session?.accessToken,
+      });
 
-        return expenses.map(mapExpense);
-      } catch {
-        return getDemoExpenses();
-      }
+      return expenses.map(mapExpense);
     },
     select: (expenses) => {
       if (!query) {
