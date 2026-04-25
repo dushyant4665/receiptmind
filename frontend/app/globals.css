@@ -1,0 +1,203 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;400;500&family=Instrument+Serif:ital@0;1&display=swap");
+
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", sans-serif;
+  --font-heading: "Instrument Serif", serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  --color-bg-page: #f7f7f5;
+  --color-bg-surface: #ffffff;
+  --color-bg-subtle: #f0f0ec;
+  --color-bg-invert: #0d0d0b;
+  --color-text-primary: #0a0a0a;
+  --color-text-secondary: #3d3d3d;
+  --color-text-muted: #888884;
+  --color-text-ghost: #c0bfbb;
+  --color-text-invert: #f5f5f0;
+  --color-border-default: #e5e5e1;
+  --color-border-subtle: #eeeeea;
+  --color-border-strong: #c8c8c4;
+  --color-border-invert: #2a2a28;
+  --color-amber: #b8711f;
+  --color-amber-hover: #a3631a;
+  --color-amber-surface: #fdf5e8;
+  --color-amber-border: #e8c88a;
+  --color-success: #1a5c3a;
+  --color-success-surface: #edf7f2;
+  --color-warning: #8a5c0a;
+  --color-warning-surface: #fdf6e3;
+  --color-error: #b5281e;
+  --color-error-surface: #fdf0ee;
+  --color-info: #1e4db5;
+  --color-info-surface: #eef3fd;
+
+  /* Backward-compatible aliases for existing dashboard classes. */
+  --color-ink: #0a0a0a;
+  --color-ink2: #3d3d3d;
+  --color-ink3: #888884;
+  --color-ink4: #c0bfbb;
+  --color-surface: #f7f7f5;
+  --color-white: #ffffff;
+  --color-line: #e5e5e1;
+  --color-line2: #eeeeea;
+  --color-amber-bg: #fdf5e8;
+  --color-amber-light: #fdf5e8;
+  --color-green: #1a5c3a;
+  --color-green-bg: #edf7f2;
+  --color-red: #b5281e;
+  --color-red-bg: #fdf0ee;
+}
+
+@layer base {
+  :root {
+    --bg-page: #f7f7f5;
+    --bg-surface: #ffffff;
+    --bg-subtle: #f0f0ec;
+    --bg-invert: #0d0d0b;
+
+    --text-primary: #0a0a0a;
+    --text-secondary: #3d3d3d;
+    --text-muted: #888884;
+    --text-ghost: #c0bfbb;
+    --text-invert: #f5f5f0;
+
+    --border-default: #e5e5e1;
+    --border-subtle: #eeeeea;
+    --border-strong: #c8c8c4;
+    --border-invert: #2a2a28;
+
+    --amber: #b8711f;
+    --amber-hover: #a3631a;
+    --amber-surface: #fdf5e8;
+    --amber-border: #e8c88a;
+
+    --success: #1a5c3a;
+    --success-surface: #edf7f2;
+    --warning: #8a5c0a;
+    --warning-surface: #fdf6e3;
+    --error: #b5281e;
+    --error-surface: #fdf0ee;
+    --info: #1e4db5;
+    --info-surface: #eef3fd;
+
+    --cat-software-text: #1e3a8a;
+    --cat-software-bg: #eff4ff;
+    --cat-travel-text: #92400e;
+    --cat-travel-bg: #fffbeb;
+    --cat-office-text: #14532d;
+    --cat-office-bg: #f0fdf4;
+    --cat-food-text: #581c87;
+    --cat-food-bg: #faf5ff;
+    --cat-marketing-text: #7c2d12;
+    --cat-marketing-bg: #fff7ed;
+    --cat-equipment-text: #0c4a6e;
+    --cat-equipment-bg: #f0f9ff;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    min-height: 100vh;
+    background: var(--bg-page);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-heading);
+    font-weight: 400;
+  }
+
+  a,
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  button,
+  a,
+  input,
+  textarea,
+  select {
+    transition-duration: 150ms;
+    transition-timing-function: ease;
+  }
+
+  ::selection {
+    background: var(--amber-surface);
+    color: var(--text-primary);
+  }
+}
+
+@layer utilities {
+  .receipt-shadow {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  .fade-up {
+    animation: receipt-fade-up 400ms ease both;
+  }
+
+  .delay-80 {
+    animation-delay: 80ms;
+  }
+
+  .delay-160 {
+    animation-delay: 160ms;
+  }
+
+  .delay-240 {
+    animation-delay: 240ms;
+  }
+
+  .delay-320 {
+    animation-delay: 320ms;
+  }
+}
+
+@keyframes receipt-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
+}

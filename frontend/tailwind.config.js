@@ -1,0 +1,51 @@
+module.exports = {
+  content: [
+    "./app/**/*.{ts,tsx}",
+    "./components/**/*.{ts,tsx}",
+    "./hooks/**/*.{ts,tsx}",
+    "./lib/**/*.{ts,tsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        ink: "#0a0a0a",
+        ink2: "#3a3a3a",
+        ink3: "#888888",
+        ink4: "#bbbbbb",
+        surface: "#fafaf8",
+        white: "#ffffff",
+        line: "#e8e8e4",
+        line2: "#f0f0ec",
+        amber: "#c97d2a",
+        "amber-bg": "#fdf6ec",
+        "amber-light": "#fef9f2",
+        green: "#1a6644",
+        "green-bg": "#eef7f2",
+        red: "#c0392b",
+        "red-bg": "#fdf0ee",
+        blue: "#3b5bdb",
+      },
+      borderRadius: {
+        sm: "4px",
+        md: "8px",
+        lg: "12px",
+        xl: "16px",
+      },
+      fontFamily: {
+        sans: ['"DM Sans"', "sans-serif"],
+        heading: ['"Instrument Serif"', "serif"],
+        mono: [
+          "ui-monospace",
+          "SFMono-Regular",
+          "Menlo",
+          "Monaco",
+          "Consolas",
+          '"Liberation Mono"',
+          '"Courier New"',
+          "monospace",
+        ],
+      },
+    },
+  },
+  plugins: [],
+};

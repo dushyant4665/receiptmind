@@ -1,0 +1,17 @@
+# Local environment
+backend/.env
+frontend/.env.local
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+frontend/tmp/
+frontend/tmp-demo-upload.pdf
+frontend/*.log
+frontend/*.tsbuildinfo
+
+# OS / editor
+.DS_Store
+Thumbs.db
