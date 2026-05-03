@@ -10,5 +10,13 @@ export default async function AuthLayout({ children }: { children: ReactNode }) 
     redirect("/dashboard");
   }
 
-  return <div className="flex min-h-screen items-center justify-center bg-bg-page px-4 py-10">{children}</div>;
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-surface px-4 py-10">
+      <div className="fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-bl from-amber-surface/40 via-transparent to-transparent" />
+        <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-amber-surface/20 via-transparent to-transparent" />
+      </div>
+      {children}
+    </div>
+  );
 }

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import {
+  AlertCircle,
+  BarChart3,
   CreditCard,
   LayoutDashboard,
   LogOut,
@@ -12,25 +14,31 @@ import {
   Receipt,
   Settings,
   UploadCloud,
+  Layers,
+  Sparkles,
+  Search,
+  ChevronRight,
+  Bell,
 } from "lucide-react";
 import { Logo } from "@/components/common/logo";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const navigation = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/expenses", label: "Expenses", icon: CreditCard },
+  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/receipts", label: "Receipts", icon: Receipt },
-  { href: "/reports", label: "Reports", icon: LayoutDashboard },
-  { href: "/integrations", label: "Integrations", icon: CreditCard },
+  { href: "/expenses", label: "Expenses", icon: CreditCard },
+  { href: "/exceptions", label: "Exceptions", icon: AlertCircle, badge: 3 },
+  { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/integrations", label: "Integrations", icon: Layers },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 const categories = [
-  { label: "Software", color: "bg-[var(--cat-software-text)]" },
-  { label: "Travel", color: "bg-[var(--cat-travel-text)]" },
-  { label: "Office", color: "bg-[var(--cat-office-text)]" },
-  { label: "Food", color: "bg-[var(--cat-food-text)]" },
+  { label: "Software", color: "bg-blue-500" },
+  { label: "Travel", color: "bg-emerald-500" },
+  { label: "Office", color: "bg-amber-500" },
+  { label: "Food", color: "bg-rose-500" },
 ];
 
 type DashboardShellProps = {
@@ -44,130 +52,152 @@ type DashboardShellProps = {
 export function DashboardShell({ children, initialUser }: DashboardShellProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
-  const displayName = session?.user?.name ?? initialUser?.name ?? "ReceiptMind User";
-  const displayEmail = session?.user?.email ?? initialUser?.email ?? "Signed in";
+  const displayName = session?.user?.name ?? initialUser?.name ?? "User";
+  const displayEmail = session?.user?.email ?? initialUser?.email ?? "Enterprise";
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
-    <div className="min-h-screen bg-bg-page text-text-primary">
-      <header className="sticky top-0 z-50 h-14 border-b border-border-default bg-bg-surface px-4 md:px-8">
-        <div className="mx-auto flex h-full max-w-7xl items-center justify-between">
+    <div className="min-h-screen bg-bg-page text-text-primary flex">
+      {/* Sidebar */}
+      <aside className="hidden w-[260px] flex-col border-r border-border-default bg-white shrink-0 md:flex">
+        {/* Logo */}
+        <div className="flex items-center gap-3 px-5 h-[64px] border-b border-border-subtle">
           <Logo />
-          <div className="hidden items-center gap-2 md:flex">
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/dashboard">Dashboard</Link>
-            </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/receipts">Receipts</Link>
-            </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/expenses">Expenses</Link>
-            </Button>
-            <Button asChild size="sm">
-              <Link href="/receipts">Upload</Link>
-            </Button>
-            <div className="flex size-[30px] items-center justify-center rounded-full border-[1.5px] border-amber-border bg-amber-surface text-[12px] font-medium text-amber">
-              {initials}
-            </div>
-          </div>
-          <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open dashboard menu">
-            <Menu />
-          </Button>
         </div>
-      </header>
 
-      <div className="mx-auto grid max-w-7xl grid-cols-1 md:grid-cols-[220px_1fr]">
-        <aside className="hidden h-[calc(100vh-56px)] overflow-y-auto border-r border-border-default bg-bg-surface px-3 py-5 md:flex md:flex-col">
-          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-text-ghost">
-            Workspace
-          </p>
-          <nav className="grid gap-1">
-            {navigation.map(({ href, label, icon: Icon }) => {
-              const active = pathname === href;
+        {/* AI Badge */}
+        <div className="mx-4 mt-5 mb-1">
+          <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-amber-surface/60 border border-amber-border/40">
+            <Sparkles className="size-3.5 text-amber fill-amber/20" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-amber">AI Engine Active</span>
+          </div>
+        </div>
 
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-[8px] px-2.5 py-[7px] text-[13px] transition-[background-color,color]",
-                    active ? "bg-text-primary text-white" : "text-text-secondary hover:bg-bg-subtle",
-                  )}
-                >
-                  <Icon className={cn("size-4", active && "opacity-65")} strokeWidth={1.7} />
-                  <span>{label}</span>
-                </Link>
-              );
-            })}
-          </nav>
+        {/* Nav */}
+        <nav className="flex flex-col gap-0.5 px-3 mt-3">
+          {navigation.map(({ href, label, icon: Icon, badge }) => {
+            const active = pathname === href || (href !== "/dashboard" && pathname.startsWith(href));
 
-          <p className="mb-1.5 mt-4 text-[11px] font-medium uppercase tracking-[0.08em] text-text-ghost">
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  "group flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150",
+                  active
+                    ? "bg-ink text-white shadow-md shadow-ink/8"
+                    : "text-text-secondary hover:bg-bg-subtle hover:text-text-primary",
+                )}
+              >
+                <Icon className={cn("size-[18px] shrink-0", active ? "text-white" : "text-text-ghost")} strokeWidth={active ? 2 : 1.8} />
+                <span className="flex-1">{label}</span>
+                {badge && (
+                  <span className={cn(
+                    "flex size-5 items-center justify-center rounded-full text-[10px] font-bold",
+                    active ? "bg-white/20 text-white" : "bg-red text-white"
+                  )}>
+                    {badge}
+                  </span>
+                )}
+                {!active && (
+                  <ChevronRight className="size-3.5 text-text-ghost opacity-0 group-hover:opacity-100 transition-opacity" />
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Smart Filters */}
+        <div className="mt-8 px-3">
+          <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-text-ghost">
             Categories
           </p>
-          <div className="grid gap-1">
+          <div className="flex flex-col gap-0.5">
             {categories.map((category) => (
               <div
                 key={category.label}
-                className="flex items-center gap-2.5 rounded-[8px] px-2.5 py-[7px] text-[13px] text-text-secondary"
+                className="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12px] text-text-muted cursor-pointer hover:bg-bg-subtle transition-colors"
               >
-                <span className={cn("size-2 rounded-full", category.color)} />
+                <span className={cn("size-1.5 rounded-full", category.color)} />
                 {category.label}
               </div>
             ))}
           </div>
+        </div>
 
-          <div className="mt-auto space-y-4 pt-6">
-            <div>
-              <div className="mb-2 flex items-center justify-between text-[12px] text-text-muted">
-                <span>Monthly usage</span>
-                <span>Live</span>
-              </div>
-              <div className="h-[3px] rounded-[2px] bg-border-default">
-                <div className="h-full w-[68%] rounded-[2px] bg-amber" />
+        {/* Usage */}
+        <div className="mt-auto px-3 pb-3">
+          <div className="rounded-lg border border-border-default p-3 bg-bg-page/50">
+            <div className="mb-2 flex items-center justify-between text-[10px] font-bold text-text-ghost uppercase tracking-widest">
+              <span>Usage</span>
+              <span className="text-amber font-semibold">85%</span>
+            </div>
+            <div className="h-1 rounded-full bg-border-default overflow-hidden">
+              <div className="h-full w-[85%] rounded-full bg-gradient-to-r from-amber to-amber-hover" />
+            </div>
+          </div>
+
+          {/* User */}
+          <button
+            type="button"
+            onClick={() => void signOut({ callbackUrl: "/login" })}
+            className="group mt-2 flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-all hover:bg-bg-subtle"
+          >
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-surface text-[11px] font-bold text-amber border border-amber-border/50">
+              {initials}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[12px] font-semibold text-text-primary">{displayName}</span>
+              <span className="block truncate text-[10px] text-text-ghost">{displayEmail}</span>
+            </span>
+            <LogOut className="size-3.5 text-text-ghost opacity-0 group-hover:opacity-100 group-hover:text-red transition-all" />
+          </button>
+        </div>
+      </aside>
+
+      {/* Main area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Header */}
+        <header className="sticky top-0 z-50 h-[64px] border-b border-border-default glass px-6 md:px-8">
+          <div className="flex h-full items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="icon" className="md:hidden" aria-label="Menu">
+                <Menu className="size-5" />
+              </Button>
+              <div className="hidden md:flex items-center gap-2 rounded-lg border border-border-default bg-white px-3 py-1.5 w-[260px] shadow-xs">
+                <Search className="size-4 text-text-ghost" />
+                <input
+                  placeholder="Search receipts, vendors..."
+                  className="bg-transparent border-none outline-none text-[13px] w-full placeholder:text-text-ghost"
+                />
+                <kbd className="hidden lg:inline-flex items-center gap-0.5 rounded border border-border-default bg-bg-page px-1.5 py-0.5 text-[10px] font-mono text-text-ghost">⌘K</kbd>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => void signOut({ callbackUrl: "/login" })}
-              className="flex w-full items-center gap-2.5 rounded-[8px] border border-border-default p-2.5 text-left transition-[background-color] hover:bg-bg-subtle"
-            >
-              <span className="flex size-[30px] items-center justify-center rounded-full border border-border-default bg-amber-surface text-[11px] font-medium text-amber">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" className="size-9 relative">
+                <Bell className="size-4 text-text-muted" />
+                <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-red ring-2 ring-white" />
+              </Button>
+
+              <Button asChild size="sm" className="h-8 px-3.5 rounded-lg bg-amber hover:bg-amber-hover text-white shadow-xs transition-all hover:shadow-glow hover:-translate-y-px">
+                <Link href="/receipts" className="flex items-center gap-1.5">
+                  <UploadCloud className="size-3.5" />
+                  <span className="text-[12px] font-medium">Upload</span>
+                </Link>
+              </Button>
+
+              <div className="h-6 w-px bg-border-default mx-1 hidden md:block" />
+
+              <div className="flex size-8 items-center justify-center rounded-full bg-amber-surface text-[11px] font-bold text-amber border border-amber-border/50 cursor-pointer hover:shadow-glow transition-shadow">
                 {initials}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12px] font-medium text-text-primary">
-                  {displayName}
-                </span>
-                <span className="block truncate text-[11px] text-text-ghost">
-                  {displayEmail}
-                </span>
-              </span>
-              <LogOut className="size-4 text-text-ghost" />
-            </button>
-          </div>
-        </aside>
-
-        <main className="min-w-0 px-4 py-7 md:px-8">
-          <div className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-start">
-            <div>
-              <p className="text-[11px] font-medium uppercase tracking-[0.07em] text-text-ghost">
-                Overview
-              </p>
-              <h1 className="mt-1 font-heading text-[26px] leading-[1.2] tracking-[-0.3px] text-text-primary">
-                Dashboard
-              </h1>
-              <p className="mt-1 text-[13px] text-text-muted">
-                Keep receipts, approvals, and exports in one calm finance workspace.
-              </p>
+              </div>
             </div>
-            <Button asChild>
-              <Link href="/receipts" className="inline-flex items-center gap-2">
-                <UploadCloud />
-                Upload receipt
-              </Link>
-            </Button>
           </div>
+        </header>
+
+        {/* Content */}
+        <main className="flex-1 overflow-auto px-6 py-8 md:px-8 lg:px-10">
           {children}
         </main>
       </div>

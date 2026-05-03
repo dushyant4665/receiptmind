@@ -1,15 +1,12 @@
 import { ExpenseTable } from "@/components/expenses/expense-table";
-import { SectionHeading } from "@/components/common/section-heading";
 
 export default function ExpensesPage() {
   return (
-    <div className="space-y-8">
-      <SectionHeading
-        eyebrow="Expense ledger"
-        title="Review, filter, and export spend with full receipt traceability."
-        description="Operations-friendly tables for reimbursements, AP sync, and supplier trend monitoring."
-        align="left"
-      />
+    <div className="space-y-6 animate-in">
+      <div>
+        <h1 className="text-[24px] font-heading text-text-primary tracking-tight">Expenses</h1>
+        <p className="mt-1 text-[13px] text-text-muted">Review, filter, and export spend with full receipt traceability</p>
+      </div>
       <ExpenseTable />
     </div>
   );

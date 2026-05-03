@@ -1,0 +1,3 @@
+{"level":"info","environment":"","time":1777758687,"message":"Logger initialized"}
+{"level":"fatal","error":"unable to ping database: failed to connect to `user=receiptmind database=receiptmind`:\n\t[::1]:5432 (localhost): dial error: dial tcp [::1]:5432: connectex: No connection could be made because the target machine actively refused it.\n\t127.0.0.1:5432 (localhost): dial error: dial tcp 127.0.0.1:5432: connectex: No connection could be made because the target machine actively refused it.","time":1777758687,"message":"Failed to connect to database"}
+exit status 1

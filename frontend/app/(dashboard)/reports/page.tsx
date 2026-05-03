@@ -35,53 +35,57 @@ export default function ReportsPage() {
   }, [data]);
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[12px] border border-border-default bg-bg-surface p-5">
-        <h2 className="text-[15px] font-medium text-text-primary">Spend by category</h2>
+    <div className="space-y-6 animate-in">
+      <div>
+        <h1 className="text-[24px] font-heading text-text-primary tracking-tight">Reports</h1>
+        <p className="mt-1 text-[13px] text-text-muted">Financial intelligence and spend analytics</p>
+      </div>
+      <section className="rounded-lg border border-border-default bg-white p-5 shadow-xs">
+        <h2 className="text-[13px] font-semibold text-text-primary">Spend by category</h2>
         <div className="mt-6 flex items-end gap-4">
           {spendByCategory.length > 0 ? (
             spendByCategory.map((bar) => (
               <div key={bar.label} className="flex flex-1 flex-col gap-2">
-                <div className="w-full rounded-[4px] bg-amber-surface" style={{ height: `${Math.max(bar.value / 10, 16)}px` }} />
-                <span className="text-center text-[12px] text-text-muted">{bar.label}</span>
+                <div className="w-full rounded-md bg-amber-surface" style={{ height: `${Math.max(bar.value / 10, 20)}px` }} />
+                <span className="text-center text-[11px] text-text-muted">{bar.label}</span>
               </div>
             ))
           ) : (
-            <p className="text-[13px] text-text-muted">No expense data yet.</p>
+            <p className="text-[12px] text-text-muted">No expense data yet.</p>
           )}
         </div>
       </section>
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-[12px] border border-border-default bg-bg-surface p-5">
-          <h2 className="text-[15px] font-medium text-text-primary">Spend by vendor</h2>
-          <div className="mt-4 space-y-3">
+        <section className="rounded-lg border border-border-default bg-white p-5 shadow-xs">
+          <h2 className="text-[13px] font-semibold text-text-primary">Spend by vendor</h2>
+          <div className="mt-4 space-y-2">
             {spendByVendor.length > 0 ? (
               spendByVendor.map((vendor) => (
-                <div key={vendor.label} className="flex items-center justify-between rounded-[8px] border border-border-subtle bg-bg-page px-4 py-3">
-                  <span className="text-[13px] text-text-secondary">{vendor.label}</span>
-                  <span className="font-mono text-[12px] text-text-muted">${vendor.value.toFixed(2)}</span>
+                <div key={vendor.label} className="flex items-center justify-between rounded-lg border border-border-subtle bg-bg-page px-4 py-2.5">
+                  <span className="text-[12px] text-text-secondary">{vendor.label}</span>
+                  <span className="font-mono text-[12px] text-text-primary tabular-nums">${vendor.value.toFixed(2)}</span>
                 </div>
               ))
             ) : (
-              <p className="text-[13px] text-text-muted">No vendor spend yet.</p>
+              <p className="text-[12px] text-text-muted">No vendor spend yet.</p>
             )}
           </div>
         </section>
-        <section className="rounded-[12px] border border-border-default bg-bg-surface p-5">
-          <h2 className="text-[15px] font-medium text-text-primary">Spend by month</h2>
+        <section className="rounded-lg border border-border-default bg-white p-5 shadow-xs">
+          <h2 className="text-[13px] font-semibold text-text-primary">Spend by month</h2>
           <div className="mt-4 grid gap-3">
             {spendByMonth.length > 0 ? (
               spendByMonth.map((month) => (
                 <div key={month.label} className="grid grid-cols-[72px_1fr_80px] items-center gap-3">
-                  <span className="text-[12px] text-text-muted">{month.label}</span>
-                  <div className="h-[3px] rounded-[2px] bg-border-default">
-                    <div className="h-full rounded-[2px] bg-amber" style={{ width: `${Math.min(month.value / 10, 100)}%` }} />
+                  <span className="text-[11px] text-text-muted tabular-nums">{month.label}</span>
+                  <div className="h-1 rounded-full bg-border-default overflow-hidden">
+                    <div className="h-full rounded-full bg-amber" style={{ width: `${Math.min(month.value / 10, 100)}%` }} />
                   </div>
-                  <span className="font-mono text-[12px] text-text-muted">${month.value.toFixed(2)}</span>
+                  <span className="font-mono text-[11px] text-text-primary tabular-nums">${month.value.toFixed(2)}</span>
                 </div>
               ))
             ) : (
-              <p className="text-[13px] text-text-muted">No monthly totals yet.</p>
+              <p className="text-[12px] text-text-muted">No monthly totals yet.</p>
             )}
           </div>
         </section>

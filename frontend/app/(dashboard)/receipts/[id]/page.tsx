@@ -10,12 +10,11 @@ export default function ReceiptDetailPage() {
 
   const fieldRows = data
     ? [
-        ["Vendor", data.vendorName || data.filename],
-        ["Amount", data.amount != null ? `${data.currency} ${data.amount.toFixed(2)}` : "Not extracted"],
-        ["Date", data.date ?? "Not extracted"],
+        ["Vendor", data.vendorName || "Unknown"],
+        ["Amount", data.amount != null ? `$${data.amount.toFixed(2)}` : "Not extracted"],
+        ["Date", data.receiptDate ?? "Not extracted"],
         ["Category", data.category || "Uncategorized"],
-        ["Currency", data.currency || "USD"],
-        ["Description", data.description || "No description"],
+        ["Confidence", data.confidence != null ? `${(data.confidence * 100).toFixed(0)}%` : "—"],
       ]
     : [];
 
@@ -29,7 +28,7 @@ export default function ReceiptDetailPage() {
               <p className="font-mono text-[12px] text-text-muted">Loading receipt...</p>
             ) : data?.fileUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={data.fileUrl} alt={data.filename} className="max-h-full max-w-full object-contain" />
+              <img src={data.fileUrl} alt={data.vendorName ?? "Receipt"} className="max-h-full max-w-full object-contain" />
             ) : (
               <p className="font-mono text-[12px] text-text-muted">Receipt preview unavailable</p>
             )}

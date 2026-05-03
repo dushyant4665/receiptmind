@@ -7,6 +7,7 @@ export type User = {
   role?: string;
   avatarUrl?: string;
   companyName?: string;
+  organizationId?: string;
 };
 
 export type Expense = {
@@ -23,25 +24,65 @@ export type Expense = {
 
 export type Receipt = {
   id: string;
-  filename: string;
-  fileUrl: string;
-  fileSize: number;
-  mimeType: string;
+  organizationId: string;
+  userId: string;
+  filePath: string;
   status: string;
-  vendorName: string;
-  amount?: number;
-  currency: string;
-  date?: string;
-  category: string;
-  description: string;
+  rawVendorName?: string | null;
+  rawAmount?: number | null;
+  rawDate?: string | null;
+  rawCategory?: string | null;
+  rawConfidence?: number | null;
+  vendorName?: string | null;
+  amount?: number | null;
+  receiptDate?: string | null;
+  category?: string | null;
+  confidence?: number | null;
   createdAt: string;
-  processedAt?: string;
+  fileUrl?: string;
+  exceptions?: Exception[];
+};
+
+export type ReceiptListResponse = {
+  receipts: Receipt[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type ReceiptUploadResponse = {
+  receipt_id: string;
+  status: string;
+};
+
+export type Exception = {
+  id: string;
+  receiptId: string;
+  organizationId: string;
+  type: string;
+  field: string;
+  message: string;
+  status: string;
+  createdAt: string;
+};
+
+export type Rule = {
+  id: string;
+  organizationId: string;
+  conditionType: string;
+  conditionValue: string;
+  actionType: string;
+  actionValue: string;
+  isActive: boolean;
+  createdAt: string;
 };
 
 export type DashboardStats = {
-  totalSpent: number;
-  receiptCount: number;
-  expenseCount: number;
+  totalReceipts: number;
+  totalAmount: number;
+  processedCount: number;
+  pendingCount: number;
+  needsReviewCount: number;
 };
 
 export type DashboardActivity = {
@@ -53,6 +94,6 @@ export type DashboardActivity = {
 
 export type ApiResponse<T> = {
   success: boolean;
-  message: string;
-  data: T;
+  data?: T;
+  error?: string;
 };

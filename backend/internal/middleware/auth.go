@@ -4,37 +4,30 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/receiptmind/backend/internal/services"
+
+	"receiptmind-backend/internal/handlers"
+	"receiptmind-backend/internal/services"
 )
 
-func AuthMiddleware(authService *services.AuthService) fiber.Handler {
+func AuthProtected(jwtService *services.JWTService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Missing authorization header",
-			})
+			return c.Status(fiber.StatusUnauthorized).JSON(handlers.ErrorResponse("missing authorization header"))
 		}
 
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Invalid authorization header",
-			})
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+			return c.Status(fiber.StatusUnauthorized).JSON(handlers.ErrorResponse("invalid authorization format"))
 		}
 
-		token := parts[1]
-		claims, err := authService.ValidateToken(token)
+		claims, err := jwtService.ValidateToken(parts[1])
 		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Invalid or expired token",
-			})
+			return c.Status(fiber.StatusUnauthorized).JSON(handlers.ErrorResponse("invalid or expired token"))
 		}
 
-		// Store user info in context
 		c.Locals("user_id", claims.UserID)
-		c.Locals("user_email", claims.Email)
-		c.Locals("user_role", claims.Role)
+		c.Locals("organization_id", claims.OrganizationID)
 
 		return c.Next()
 	}

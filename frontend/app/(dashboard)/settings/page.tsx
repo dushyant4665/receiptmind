@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
-import { SectionHeading } from "@/components/common/section-heading";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,26 +10,29 @@ import { useProfile } from "@/hooks/use-profile";
 
 export default function SettingsPage() {
   const { data, isLoading, updateProfile } = useProfile();
-  const [draft, setDraft] = useState<{ name: string; email: string; company: string } | null>(null);
+  const [draftName, setDraftName] = useState<string | null>(null);
 
-  const formValues = draft ?? {
-    name: data?.name ?? "",
-    email: data?.email ?? "",
-    company: data?.companyName ?? "",
+  const name = draftName ?? (data?.name ?? "");
+
+  const handleSave = async () => {
+    try {
+      await updateProfile.mutateAsync({ name });
+      toast.success("Profile updated.");
+    } catch {
+      toast.error("Failed to update profile.");
+    }
   };
 
   return (
-    <div className="space-y-8">
-      <SectionHeading
-        eyebrow="Workspace settings"
-        title="Manage profile details and workspace defaults."
-        description="Keep your account details current and make sure finance operations run from the right workspace context."
-        align="left"
-      />
+    <div className="space-y-6 animate-in">
+      <div>
+        <h1 className="text-[24px] font-heading text-text-primary tracking-tight">Settings</h1>
+        <p className="mt-1 text-[13px] text-text-muted">Manage your profile and workspace</p>
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <section className="rounded-[12px] border border-border-default bg-bg-surface p-5">
-          <h2 className="text-[15px] font-medium text-text-primary">Profile</h2>
+        <section className="rounded-lg border border-border-default bg-white p-5 shadow-xs">
+          <h2 className="text-[13px] font-semibold text-text-primary">Profile</h2>
           <div className="mt-4 space-y-4">
             <div>
               <Label htmlFor="name" className="mb-1.5 text-[12px] font-medium text-text-secondary">
@@ -38,13 +40,8 @@ export default function SettingsPage() {
               </Label>
               <Input
                 id="name"
-                value={formValues.name}
-                onChange={(event) =>
-                  setDraft({
-                    ...formValues,
-                    name: event.target.value,
-                  })
-                }
+                value={name}
+                onChange={(e) => setDraftName(e.target.value)}
                 disabled={isLoading}
               />
             </div>
@@ -52,47 +49,21 @@ export default function SettingsPage() {
               <Label htmlFor="email" className="mb-1.5 text-[12px] font-medium text-text-secondary">
                 Email
               </Label>
-              <Input id="email" value={formValues.email} disabled />
-            </div>
-            <div>
-              <Label htmlFor="company" className="mb-1.5 text-[12px] font-medium text-text-secondary">
-                Company
-              </Label>
-              <Input
-                id="company"
-                value={formValues.company}
-                onChange={(event) =>
-                  setDraft({
-                    ...formValues,
-                    company: event.target.value,
-                  })
-                }
-                disabled={isLoading}
-              />
+              <Input id="email" value={data?.email ?? ""} disabled className="bg-bg-page" />
             </div>
             <Button
-              onClick={async () => {
-                try {
-                  await updateProfile.mutateAsync({
-                    name: formValues.name,
-                    companyName: formValues.company,
-                  });
-                  toast.success("Profile updated.");
-                } catch (error) {
-                  console.error(error);
-                  toast.error("Failed to update profile.");
-                }
-              }}
-              disabled={updateProfile.isPending}
+              onClick={handleSave}
+              disabled={updateProfile.isPending || isLoading}
+              size="sm"
             >
               {updateProfile.isPending ? "Saving..." : "Save changes"}
             </Button>
           </div>
         </section>
 
-        <section className="rounded-[12px] border border-border-default bg-bg-surface p-5">
-          <h2 className="text-[15px] font-medium text-text-primary">Workspace links</h2>
-          <div className="mt-4 space-y-3">
+        <section className="rounded-lg border border-border-default bg-white p-5 shadow-xs">
+          <h2 className="text-[13px] font-semibold text-text-primary">Workspace</h2>
+          <div className="mt-4 space-y-2">
             {[
               ["/settings/billing", "Billing settings"],
               ["/settings/team", "Team management"],
@@ -101,9 +72,10 @@ export default function SettingsPage() {
               <Link
                 key={href}
                 href={href}
-                className="block rounded-[8px] border border-border-subtle bg-bg-page px-4 py-3 text-[13px] text-text-secondary transition-[border-color] hover:border-border-strong"
+                className="flex items-center justify-between rounded-lg border border-border-subtle bg-bg-page px-4 py-3 text-[12px] text-text-secondary transition-all hover:border-ink5 hover:text-text-primary hover:shadow-xs"
               >
                 {label}
+                <span className="text-text-ghost">→</span>
               </Link>
             ))}
           </div>

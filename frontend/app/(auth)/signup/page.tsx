@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Receipt } from "lucide-react";
 import { postApiData } from "@/lib/api-client";
 
 function GoogleIcon() {
@@ -24,6 +25,7 @@ function GoogleIcon() {
 export default function SignupPage() {
   const router = useRouter();
   const [name, setName] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [accepted, setAccepted] = useState(false);
@@ -38,15 +40,13 @@ export default function SignupPage() {
   }, [password]);
 
   return (
-    <div className="w-full max-w-[400px] rounded-[12px] border border-border-default bg-bg-surface p-8">
-      <div className="mb-6 text-center">
-        <div className="mx-auto mb-6 flex w-fit items-center gap-2">
-          <span className="flex size-7 items-center justify-center rounded-[6px] bg-text-primary text-[11px] font-medium tracking-[1px] text-white">
-            RM
-          </span>
-          <span className="text-[15px] font-medium tracking-[-0.3px] text-text-primary">ReceiptMind</span>
+    <div className="w-full max-w-[420px] rounded-xl border border-border-default bg-white p-8 shadow-md animate-in">
+      {/* Brand */}
+      <div className="mb-8 text-center">
+        <div className="mx-auto mb-5 flex size-11 items-center justify-center rounded-xl bg-ink shadow-md">
+          <Receipt className="size-5 text-white" />
         </div>
-        <h1 className="text-[18px] font-medium text-text-primary">Create your account</h1>
+        <h1 className="text-[20px] font-semibold text-text-primary tracking-tight">Create your account</h1>
         <p className="mt-1 text-[13px] text-text-muted">14-day free trial. No credit card.</p>
       </div>
 
@@ -64,9 +64,9 @@ export default function SignupPage() {
 
           try {
             await postApiData("/auth/register", {
-              name,
               email,
               password,
+              organization_name: companyName,
             });
 
             const result = await signIn("credentials", {
@@ -94,77 +94,88 @@ export default function SignupPage() {
           <Label htmlFor="name" className="mb-1.5 text-[12px] font-medium text-text-secondary">
             Full name
           </Label>
-          <Input id="name" value={name} onChange={(event) => setName(event.target.value)} />
+          <Input id="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="John Doe" />
+        </div>
+        <div>
+          <Label htmlFor="companyName" className="mb-1.5 text-[12px] font-medium text-text-secondary">
+            Company name
+          </Label>
+          <Input
+            id="companyName"
+            value={companyName}
+            onChange={(event) => setCompanyName(event.target.value)}
+            placeholder="Acme Inc."
+          />
         </div>
         <div>
           <Label htmlFor="email" className="mb-1.5 text-[12px] font-medium text-text-secondary">
             Work email
           </Label>
-          <Input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+          <Input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" />
         </div>
         <div>
           <Label htmlFor="password" className="mb-1.5 text-[12px] font-medium text-text-secondary">
             Password
           </Label>
           <Input id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
-          <div className="mt-3 flex gap-[3px]">
+          <div className="mt-2.5 flex gap-1">
             {[1, 2, 3, 4].map((segment) => (
               <span
                 key={segment}
                 className={[
-                  "h-[3px] flex-1 rounded-[2px]",
+                  "h-[3px] flex-1 rounded-full transition-colors",
                   segment <= strength
                     ? strength === 1
-                      ? "bg-error"
+                      ? "bg-red"
                       : strength <= 3
                         ? "bg-amber"
-                        : "bg-success"
+                        : "bg-emerald"
                     : "bg-border-default",
                 ].join(" ")}
               />
             ))}
           </div>
         </div>
-        <label className="flex items-start gap-2 text-[12px] leading-[1.6] text-text-muted">
+        <label className="flex items-start gap-2.5 text-[11px] leading-relaxed text-text-muted cursor-pointer">
           <input
             type="checkbox"
             checked={accepted}
             onChange={(event) => setAccepted(event.target.checked)}
-            className="mt-0.5 size-4 rounded-[4px] border border-border-default"
+            className="mt-0.5 size-3.5 rounded border border-border-default accent-amber"
           />
           <span>
             I agree to{" "}
-            <Link href="/terms" className="text-amber transition-[color] hover:text-amber-hover">
+            <Link href="/terms" className="text-amber hover:text-amber-hover transition-colors">
               Terms of Service
             </Link>{" "}
             and{" "}
-            <Link href="/privacy" className="text-amber transition-[color] hover:text-amber-hover">
+            <Link href="/privacy" className="text-amber hover:text-amber-hover transition-colors">
               Privacy Policy
             </Link>
           </span>
         </label>
-        <Button type="submit" className="w-full" disabled={isSubmitting}>
+        <Button type="submit" className="w-full h-10 rounded-lg text-[13px] font-medium" disabled={isSubmitting}>
           {isSubmitting ? "Creating account..." : "Create account"}
         </Button>
       </form>
 
-      <div className="my-5 flex items-center gap-3">
+      <div className="my-6 flex items-center gap-3">
         <div className="h-px flex-1 bg-border-default" />
-        <span className="text-[13px] text-text-muted">or</span>
+        <span className="text-[11px] text-text-ghost uppercase tracking-wider">or</span>
         <div className="h-px flex-1 bg-border-default" />
       </div>
 
       <button
         type="button"
-        className="flex h-9 w-full items-center justify-center gap-2 rounded-[8px] border border-border-default bg-bg-surface text-[13px] text-text-secondary transition-[border-color,color] hover:border-border-strong hover:text-text-primary"
+        className="flex h-10 w-full items-center justify-center gap-2.5 rounded-lg border border-border-default bg-white text-[13px] font-medium text-text-secondary transition-all hover:border-ink5 hover:shadow-xs"
       >
         <GoogleIcon />
         Continue with Google
       </button>
 
-      <p className="mt-5 text-center text-[13px] text-text-muted">
+      <p className="mt-6 text-center text-[13px] text-text-muted">
         Already have an account?{" "}
-        <Link href="/login" className="text-amber transition-[color] hover:text-amber-hover">
+        <Link href="/login" className="text-amber font-medium hover:text-amber-hover transition-colors">
           Sign in
         </Link>
       </p>

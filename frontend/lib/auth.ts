@@ -4,49 +4,42 @@ import { z } from "zod";
 import { getApiUrl, getNextAuthSecret } from "@/lib/env";
 
 const credentialsSchema = z.object({
-  email: z.email(),
-  password: z.string().min(8),
+  email: z.string().email(),
+  password: z.string().min(1),
 });
 
 const API_URL = getApiUrl();
 
-type BackendAuthResponse = {
-  access_token?: string;
-  refresh_token?: string;
-  user?: {
+type BackendAuthData = {
+  access_token: string;
+  refresh_token: string;
+  user: {
     id: string;
     email: string;
-    name?: string;
-    role?: string;
   };
-  data?: {
-    accessToken?: string;
-    refreshToken?: string;
-    user?: {
-      id: string;
-      email: string;
-      name?: string;
-      role?: string;
-    };
-  };
+  organization_id: string;
+};
+
+type BackendAuthResponse = {
+  success: boolean;
+  data?: BackendAuthData;
+  error?: string;
 };
 
 function normalizeAuthResponse(payload: BackendAuthResponse) {
-  const user = payload.user ?? payload.data?.user;
-  const accessToken = payload.access_token ?? payload.data?.accessToken;
-  const refreshToken = payload.refresh_token ?? payload.data?.refreshToken;
-
-  if (!user || !accessToken || !refreshToken) {
-    throw new Error("Malformed auth response.");
+  const data = payload.data;
+  if (!data || !data.access_token || !data.refresh_token || !data.user) {
+    throw new Error(payload.error || "Malformed auth response.");
   }
 
   return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role,
-    accessToken,
-    refreshToken,
+    id: data.user.id,
+    email: data.user.email,
+    name: data.user.email,
+    role: "user",
+    organizationId: data.organization_id,
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
   };
 }
 
@@ -91,9 +84,16 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = user.role;
-        token.accessToken = user.accessToken;
-        token.refreshToken = user.refreshToken;
+        const u = user as typeof user & {
+          role?: string;
+          organizationId?: string;
+          accessToken?: string;
+          refreshToken?: string;
+        };
+        token.role = u.role;
+        token.organizationId = u.organizationId;
+        token.accessToken = u.accessToken;
+        token.refreshToken = u.refreshToken;
       }
 
       return token;

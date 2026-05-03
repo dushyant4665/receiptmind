@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Receipt, ArrowRight } from "lucide-react";
 
 function GoogleIcon() {
   return (
@@ -28,18 +29,17 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   return (
-    <div className="w-full max-w-[400px] rounded-[12px] border border-border-default bg-bg-surface p-8">
-      <div className="mb-6 text-center">
-        <div className="mx-auto mb-6 flex w-fit items-center gap-2">
-          <span className="flex size-7 items-center justify-center rounded-[6px] bg-text-primary text-[11px] font-medium tracking-[1px] text-white">
-            RM
-          </span>
-          <span className="text-[15px] font-medium tracking-[-0.3px] text-text-primary">ReceiptMind</span>
+    <div className="w-full max-w-[420px] rounded-xl border border-border-default bg-white p-8 shadow-md animate-in">
+      {/* Brand */}
+      <div className="mb-8 text-center">
+        <div className="mx-auto mb-5 flex size-11 items-center justify-center rounded-xl bg-ink shadow-md">
+          <Receipt className="size-5 text-white" />
         </div>
-        <h1 className="text-[18px] font-medium text-text-primary">Sign in to your account</h1>
-        <p className="mt-1 text-[13px] text-text-muted">Welcome back.</p>
+        <h1 className="text-[20px] font-semibold text-text-primary tracking-tight">Welcome back</h1>
+        <p className="mt-1 text-[13px] text-text-muted">Sign in to your ReceiptMind account</p>
       </div>
 
+      {/* Form */}
       <form
         className="space-y-4"
         onSubmit={async (event) => {
@@ -68,42 +68,46 @@ export default function LoginPage() {
           <Label htmlFor="email" className="mb-1.5 text-[12px] font-medium text-text-secondary">
             Work email
           </Label>
-          <Input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+          <Input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" />
         </div>
         <div>
           <div className="mb-1.5 flex items-center justify-between">
             <Label htmlFor="password" className="text-[12px] font-medium text-text-secondary">
               Password
             </Label>
-            <Link href="/forgot-password" className="text-[12px] text-amber transition-[color] hover:text-amber-hover">
+            <Link href="/forgot-password" className="text-[12px] text-amber hover:text-amber-hover transition-colors">
               Forgot password?
             </Link>
           </div>
           <Input id="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
         </div>
-        <Button type="submit" variant="amber" className="w-full" disabled={isSubmitting}>
+        <Button type="submit" variant="amber" className="w-full h-10 rounded-lg text-[13px] font-medium" disabled={isSubmitting}>
           {isSubmitting ? "Signing in..." : "Sign in"}
+          {!isSubmitting && <ArrowRight className="ml-1.5 size-3.5" />}
         </Button>
       </form>
 
-      <div className="my-5 flex items-center gap-3">
+      {/* Divider */}
+      <div className="my-6 flex items-center gap-3">
         <div className="h-px flex-1 bg-border-default" />
-        <span className="text-[13px] text-text-muted">or</span>
+        <span className="text-[11px] text-text-ghost uppercase tracking-wider">or</span>
         <div className="h-px flex-1 bg-border-default" />
       </div>
 
+      {/* Google */}
       <button
         type="button"
-        className="flex h-9 w-full items-center justify-center gap-2 rounded-[8px] border border-border-default bg-bg-surface text-[13px] text-text-secondary transition-[border-color,color] hover:border-border-strong hover:text-text-primary"
+        className="flex h-10 w-full items-center justify-center gap-2.5 rounded-lg border border-border-default bg-white text-[13px] font-medium text-text-secondary transition-all hover:border-ink5 hover:shadow-xs"
       >
         <GoogleIcon />
         Continue with Google
       </button>
 
-      <p className="mt-5 text-center text-[13px] text-text-muted">
+      {/* Footer */}
+      <p className="mt-6 text-center text-[13px] text-text-muted">
         Don&apos;t have an account?{" "}
-        <Link href="/signup" className="text-amber transition-[color] hover:text-amber-hover">
-          Start for free
+        <Link href="/signup" className="text-amber font-medium hover:text-amber-hover transition-colors">
+          Start for free <ArrowRight className="inline size-3" />
         </Link>
       </p>
     </div>

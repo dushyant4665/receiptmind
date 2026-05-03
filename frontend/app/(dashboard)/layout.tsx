@@ -7,7 +7,7 @@ import { authOptions } from "@/lib/auth";
 export default async function DashboardRouteLayout({ children }: { children: ReactNode }) {
   const session = await getServerSession(authOptions);
 
-  if (!session?.accessToken) {
+  if (!session) {
     redirect("/login");
   }
 

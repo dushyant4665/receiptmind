@@ -1,0 +1,175 @@
+package services
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
+
+	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/models"
+)
+
+type RuleService struct {
+	db *database.Database
+}
+
+func NewRuleService(db *database.Database) *RuleService {
+	return &RuleService{db: db}
+}
+
+func (r *RuleService) ApplyRules(ctx context.Context, orgID string, extraction *ExtractionResult) *ExtractionResult {
+	rules, err := r.GetActiveByOrganization(ctx, orgID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to fetch rules for applying")
+		return extraction
+	}
+
+	result := *extraction
+
+	for _, rule := range rules {
+		matched := false
+
+		switch rule.ConditionType {
+		case "vendor":
+			matched = result.VendorName == rule.ConditionValue
+		case "category":
+			matched = result.Category == rule.ConditionValue
+		}
+
+		if !matched {
+			continue
+		}
+
+		switch rule.ActionType {
+		case "set_category":
+			result.Category = rule.ActionValue
+			log.Info().
+				Str("rule_id", rule.ID).
+				Str("vendor", result.VendorName).
+				Str("category", rule.ActionValue).
+				Msg("Rule applied: category override")
+		case "ignore":
+			log.Info().Str("rule_id", rule.ID).Msg("Rule applied: ignore")
+		case "recurring":
+			log.Info().Str("rule_id", rule.ID).Msg("Rule applied: recurring flag")
+		}
+	}
+
+	return &result
+}
+
+func (r *RuleService) GetActiveByOrganization(ctx context.Context, orgID string) ([]models.Rule, error) {
+	rows, err := r.db.Pool.Query(ctx,
+		`SELECT id, organization_id, condition_type, condition_value, action_type, action_value, is_active, created_at
+		 FROM rules WHERE organization_id = $1 AND is_active = true
+		 ORDER BY created_at DESC`,
+		orgID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch rules: %w", err)
+	}
+	defer rows.Close()
+
+	rules := make([]models.Rule, 0)
+	for rows.Next() {
+		var rule models.Rule
+		if err := rows.Scan(&rule.ID, &rule.OrganizationID, &rule.ConditionType, &rule.ConditionValue, &rule.ActionType, &rule.ActionValue, &rule.IsActive, &rule.CreatedAt); err != nil {
+			log.Error().Err(err).Msg("Failed to scan rule")
+			continue
+		}
+		rules = append(rules, rule)
+	}
+
+	return rules, nil
+}
+
+func (r *RuleService) Create(ctx context.Context, orgID string, req models.CreateRuleRequest) (*models.Rule, error) {
+	rule := &models.Rule{
+		ID:             uuid.New().String(),
+		OrganizationID: orgID,
+		ConditionType:  req.ConditionType,
+		ConditionValue: req.ConditionValue,
+		ActionType:     req.ActionType,
+		ActionValue:    req.ActionValue,
+		IsActive:       true,
+	}
+
+	_, err := r.db.Pool.Exec(ctx,
+		`INSERT INTO rules (id, organization_id, condition_type, condition_value, action_type, action_value, is_active)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		rule.ID, rule.OrganizationID, rule.ConditionType, rule.ConditionValue, rule.ActionType, rule.ActionValue, rule.IsActive,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create rule: %w", err)
+	}
+
+	log.Info().Str("rule_id", rule.ID).Str("condition", rule.ConditionValue).Msg("Rule created")
+	return rule, nil
+}
+
+func (r *RuleService) GetByOrganization(ctx context.Context, orgID string) ([]models.Rule, error) {
+	rows, err := r.db.Pool.Query(ctx,
+		`SELECT id, organization_id, condition_type, condition_value, action_type, action_value, is_active, created_at
+		 FROM rules WHERE organization_id = $1
+		 ORDER BY created_at DESC`,
+		orgID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch rules: %w", err)
+	}
+	defer rows.Close()
+
+	rules := make([]models.Rule, 0)
+	for rows.Next() {
+		var rule models.Rule
+		if err := rows.Scan(&rule.ID, &rule.OrganizationID, &rule.ConditionType, &rule.ConditionValue, &rule.ActionType, &rule.ActionValue, &rule.IsActive, &rule.CreatedAt); err != nil {
+			continue
+		}
+		rules = append(rules, rule)
+	}
+
+	return rules, nil
+}
+
+func (r *RuleService) AutoLearnFromEdit(ctx context.Context, orgID, vendorName, newCategory string) {
+	var editCount int
+	err := r.db.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM receipts
+		 WHERE organization_id = $1 AND vendor_name = $2 AND category = $3 AND status = 'processed'`,
+		orgID, vendorName, newCategory,
+	).Scan(&editCount)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to count edits for auto-learn")
+		return
+	}
+
+	if editCount >= 3 {
+		var existingID string
+		err := r.db.Pool.QueryRow(ctx,
+			`SELECT id FROM rules
+			 WHERE organization_id = $1 AND condition_type = 'vendor' AND condition_value = $2 AND action_type = 'set_category'`,
+			orgID, vendorName,
+		).Scan(&existingID)
+
+		if err == nil {
+			return
+		}
+
+		_, err = r.db.Pool.Exec(ctx,
+			`INSERT INTO rules (id, organization_id, condition_type, condition_value, action_type, action_value, is_active)
+			 VALUES ($1, $2, 'vendor', $3, 'set_category', $4, true)`,
+			uuid.New().String(), orgID, vendorName, newCategory,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to auto-create rule")
+			return
+		}
+
+		log.Info().
+			Str("vendor", vendorName).
+			Str("category", newCategory).
+			Msg("Auto-learned rule created")
+	}
+}

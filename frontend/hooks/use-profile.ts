@@ -9,9 +9,6 @@ type BackendUser = {
   id: string;
   email: string;
   name?: string;
-  role?: string;
-  avatar_url?: string;
-  company_name?: string;
 };
 
 function mapUser(user: BackendUser): User {
@@ -19,9 +16,9 @@ function mapUser(user: BackendUser): User {
     id: user.id,
     email: user.email,
     name: user.name ?? "",
-    role: user.role ?? "user",
-    avatarUrl: user.avatar_url ?? "",
-    companyName: user.company_name ?? "",
+    role: "user",
+    avatarUrl: "",
+    companyName: "",
   };
 }
 
@@ -42,17 +39,12 @@ export function useProfile() {
   });
 
   const updateProfile = useMutation({
-    mutationFn: async (payload: { name: string; companyName: string; avatarUrl?: string }) => {
-      const user = await putApiData<BackendUser, { name: string; company_name: string; avatar_url: string }>(
+    mutationFn: async (payload: { name: string }) => {
+      const user = await putApiData<BackendUser, { name: string }>(
         "/users/me",
-        {
-          name: payload.name,
-          company_name: payload.companyName,
-          avatar_url: payload.avatarUrl ?? "",
-        },
+        { name: payload.name },
         { authToken: session?.accessToken },
       );
-
       return mapUser(user);
     },
     onSuccess: (user) => {

@@ -7,10 +7,17 @@ import { toast } from "sonner";
 import { UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { UpgradeModal } from "@/components/billing/upgrade-modal";
 import { uploadApiData } from "@/lib/api-client";
+import type { Receipt } from "@/types";
 
 type UploadResponse = {
-  receipts: Array<{ id: string }>;
+  receipt_id: string;
+  status: string;
+};
+
+type LocalOptimisticReceipt = Receipt & {
+  isOptimistic?: boolean;
 };
 
 export function UploadDropzone() {
@@ -19,6 +26,7 @@ export function UploadDropzone() {
   const { data: session } = useSession();
   const [progress, setProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) {
@@ -33,9 +41,31 @@ export function UploadDropzone() {
     setIsUploading(true);
     setProgress(18);
 
+    const now = new Date().toISOString();
+    const optimisticReceipts: LocalOptimisticReceipt[] = Array.from(files).map((file) => ({
+      id: `local-${crypto.randomUUID()}`,
+      organizationId: "",
+      userId: "",
+      filePath: file.name,
+      fileUrl: URL.createObjectURL(file),
+      status: "pending",
+      vendorName: "Processing...",
+      amount: null,
+      receiptDate: null,
+      category: "",
+      confidence: null,
+      createdAt: now,
+      isOptimistic: true,
+    }));
+
+    queryClient.setQueryData<Receipt[]>(["receipts", session.accessToken], (current) => [
+      ...optimisticReceipts,
+      ...(current ?? []),
+    ]);
+
     const formData = new FormData();
     Array.from(files).forEach((file) => {
-      formData.append("receipts", file);
+      formData.append("file", file);
     });
 
     try {
@@ -48,14 +78,39 @@ export function UploadDropzone() {
         authToken: session.accessToken,
       });
 
+      queryClient.setQueryData<Receipt[]>(["receipts", session.accessToken], (current) => {
+        const updated = (current ?? []).map((receipt) => {
+          if (!("isOptimistic" in receipt) || (receipt as LocalOptimisticReceipt).isOptimistic !== true) {
+            return receipt;
+          }
+
+          return {
+            ...receipt,
+            id: response.receipt_id,
+            status: "processing",
+          };
+        });
+
+        return updated;
+      });
+
       setProgress(100);
-      toast.success(`${response.receipts.length} receipt${response.receipts.length === 1 ? "" : "s"} uploaded.`);
+      toast.success("Receipt uploaded.");
       queryClient.invalidateQueries({ queryKey: ["receipts"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-activity"] });
-    } catch {
-      toast.error("Upload failed. Please try again.");
+    } catch (error: unknown) {
+      const err = error as { status?: number; message?: string };
+      if (err?.status === 402) {
+        setShowUpgradeModal(true);
+        toast.error("Free limit reached. Upgrade to continue.");
+      } else {
+        toast.error(err?.message || "Upload failed. Please try again.");
+      }
       setProgress(0);
+      queryClient.setQueryData<Receipt[]>(["receipts", session.accessToken], (current) =>
+        (current ?? []).filter((receipt) => !("isOptimistic" in receipt && (receipt as LocalOptimisticReceipt).isOptimistic)),
+      );
     } finally {
       setIsUploading(false);
       if (inputRef.current) {
@@ -65,13 +120,13 @@ export function UploadDropzone() {
   };
 
   return (
-    <section className="rounded-[12px] border border-border-default bg-bg-surface">
-      <div className="border-b border-border-subtle px-5 py-4">
-        <h2 className="font-sans text-[15px] font-medium tracking-[-0.1px] text-text-primary">
-          Bulk upload receipts
+    <section className="rounded-lg border border-border-default bg-white overflow-hidden shadow-xs">
+      <div className="border-b border-border-subtle px-5 py-3.5">
+        <h2 className="text-[13px] font-semibold text-text-primary">
+          Upload receipts
         </h2>
       </div>
-      <div className="space-y-6 p-5">
+      <div className="space-y-5 p-5">
         <input
           ref={inputRef}
           type="file"
@@ -83,39 +138,40 @@ export function UploadDropzone() {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="flex w-full cursor-pointer flex-col items-center gap-2.5 rounded-[12px] border-[1.5px] border-dashed border-border-default bg-bg-surface p-9 text-center transition-[background-color,border-color] duration-200 hover:border-border-strong hover:bg-amber-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-text-primary"
+          className="flex w-full cursor-pointer flex-col items-center gap-2.5 rounded-lg border-2 border-dashed border-border-default bg-bg-page/50 p-8 text-center transition-all duration-200 hover:border-amber hover:bg-amber-surface/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
         >
-          <span className="flex size-10 items-center justify-center rounded-[10px] border border-border-default bg-bg-page text-text-secondary">
-            <UploadCloud className="size-[18px]" strokeWidth={1.5} />
+          <span className="flex size-10 items-center justify-center rounded-lg border border-border-default bg-white text-amber shadow-xs">
+            <UploadCloud className="size-5" strokeWidth={1.8} />
           </span>
-          <span className="text-[14px] font-medium text-text-primary">
+          <span className="text-[13px] font-medium text-text-primary">
             {isUploading ? "Uploading receipts..." : "Drag files here or click to upload"}
           </span>
-          <span className="max-w-md text-[12px] leading-[1.6] text-text-muted">
-            Files are sent to the Go backend receipt endpoint and processed with your configured
-            storage pipeline.
+          <span className="max-w-sm text-[11px] leading-relaxed text-text-muted">
+            AI-powered extraction processes your receipts automatically after upload.
           </span>
-          <span className="mt-0.5 flex gap-1.5">
+          <span className="mt-1 flex gap-1.5">
             {["PDF", "JPG", "PNG", "HEIC"].map((type) => (
-              <span key={type} className="rounded-[4px] bg-bg-subtle px-2 py-0.5 font-mono text-[11px] text-text-muted">
+              <span key={type} className="rounded bg-white px-2 py-0.5 border border-border-default font-mono text-[10px] text-text-muted">
                 {type}
               </span>
             ))}
           </span>
         </button>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-[12px] text-text-muted">
-            <span>Upload progress</span>
-            <span>{progress}%</span>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[11px] text-text-muted">
+            <span>Progress</span>
+            <span className="tabular-nums">{progress}%</span>
           </div>
           <Progress value={progress} />
         </div>
 
-        <Button variant="ghost" onClick={() => setProgress(0)} disabled={isUploading}>
+        <Button variant="ghost" size="sm" onClick={() => setProgress(0)} disabled={isUploading} className="text-[11px]">
           Reset queue
         </Button>
       </div>
+
+      <UpgradeModal open={showUpgradeModal} onOpenChange={setShowUpgradeModal} />
     </section>
   );
 }

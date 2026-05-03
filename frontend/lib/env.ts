@@ -18,11 +18,10 @@ export function getApiUrl() {
     process.env.BACKEND_API_URL;
 
   if (!configured) {
-    return "http://localhost:8080/api/v1";
+    return "http://localhost:8080";
   }
 
-  const normalized = trimTrailingSlash(configured);
-  return normalized.endsWith("/api/v1") ? normalized : `${normalized}/api/v1`;
+  return trimTrailingSlash(configured);
 }
 
 export function getSupabasePublishableKey() {

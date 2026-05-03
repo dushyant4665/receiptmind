@@ -3,35 +3,23 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
 import { getApiData } from "@/lib/api-client";
-import type { DashboardActivity, DashboardStats } from "@/types";
+import type { DashboardStats } from "@/types";
 
 type BackendDashboardStats = {
-  total_spent: number;
-  receipt_count: number;
-  expense_count: number;
-};
-
-type BackendDashboardActivity = {
-  id: string;
-  type: string;
-  label: string;
-  created_at: string;
+  total_receipts: number;
+  total_amount: number;
+  processed_count: number;
+  pending_count: number;
+  needs_review_count: number;
 };
 
 function mapDashboardStats(stats: BackendDashboardStats): DashboardStats {
   return {
-    totalSpent: Number(stats.total_spent),
-    receiptCount: Number(stats.receipt_count),
-    expenseCount: Number(stats.expense_count),
-  };
-}
-
-function mapDashboardActivity(item: BackendDashboardActivity): DashboardActivity {
-  return {
-    id: item.id,
-    type: item.type,
-    label: item.label,
-    createdAt: item.created_at,
+    totalReceipts: Number(stats.total_receipts),
+    totalAmount: Number(stats.total_amount),
+    processedCount: Number(stats.processed_count),
+    pendingCount: Number(stats.pending_count),
+    needsReviewCount: Number(stats.needs_review_count),
   };
 }
 
@@ -41,28 +29,14 @@ export function useDashboardStats() {
   return useQuery({
     queryKey: ["dashboard-stats", session?.accessToken],
     enabled: status === "authenticated" && Boolean(session?.accessToken),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
     queryFn: async () => {
-      const stats = await getApiData<BackendDashboardStats>("/dashboard/stats", {
+      const stats = await getApiData<BackendDashboardStats>("/dashboard", {
         authToken: session?.accessToken,
       });
 
       return mapDashboardStats(stats);
-    },
-  });
-}
-
-export function useDashboardActivity() {
-  const { data: session, status } = useSession();
-
-  return useQuery({
-    queryKey: ["dashboard-activity", session?.accessToken],
-    enabled: status === "authenticated" && Boolean(session?.accessToken),
-    queryFn: async () => {
-      const activity = await getApiData<BackendDashboardActivity[]>("/dashboard/activity", {
-        authToken: session?.accessToken,
-      });
-
-      return activity.map(mapDashboardActivity);
     },
   });
 }

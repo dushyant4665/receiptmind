@@ -19,13 +19,13 @@ export function SectionHeading({
 
   return (
     <div className={cn("space-y-2", align === "center" ? "text-center" : "text-left")}>
-      <p className={cn("text-[11px] font-medium uppercase tracking-[0.07em]", dark ? "text-text-ghost" : "text-text-ghost")}>
+      <p className={cn("text-[10px] font-bold uppercase tracking-widest text-amber")}>
         {eyebrow}
       </p>
-      <h2 className={cn("max-w-3xl font-heading text-[26px] leading-[1.2] tracking-[-0.3px]", dark ? "text-text-invert" : "text-text-primary")}>
+      <h2 className={cn("max-w-3xl font-heading text-[24px] leading-[1.2] tracking-tight", dark ? "text-white" : "text-text-primary")}>
         {title}
       </h2>
-      <p className={cn("max-w-2xl text-[13px] leading-[1.6]", dark ? "text-text-muted" : "text-text-muted")}>
+      <p className={cn("max-w-2xl text-[13px] leading-relaxed text-text-muted")}>
         {description}
       </p>
     </div>

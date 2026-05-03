@@ -2,89 +2,85 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
-	"github.com/joho/godotenv"
+	"github.com/rs/zerolog/log"
 
-	"github.com/receiptmind/backend/internal/cache"
-	"github.com/receiptmind/backend/internal/config"
-	"github.com/receiptmind/backend/internal/database"
-	"github.com/receiptmind/backend/internal/services"
+	"receiptmind-backend/internal/config"
+	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/server"
+	"receiptmind-backend/internal/services"
+	"receiptmind-backend/pkg/logger"
 )
 
 func main() {
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using system environment")
+	logger.Init(os.Getenv("ENVIRONMENT"))
+
+	cfg := config.Load()
+
+	if err := cfg.Validate(); err != nil {
+		log.Fatal().Err(err).Msg("Configuration validation failed")
 	}
 
-	runtimeConfig, err := config.LoadRuntimeConfig()
-	if err != nil {
-		log.Fatal("Invalid runtime configuration:", err)
-	}
+	ctx := context.Background()
 
-	db, err := database.NewPostgresDB()
+	db, err := database.New(ctx, cfg)
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 	defer db.Close()
 
-	if err := db.RunMigrations(); err != nil {
-		log.Fatal("Failed to run migrations:", err)
+	if err := database.RunMigrations(ctx, db); err != nil {
+		log.Fatal().Err(err).Msg("Failed to run migrations")
 	}
 
-	redisCache, err := cache.NewRedisCache()
+	redis, err := database.NewRedis(ctx, cfg.RedisURL)
 	if err != nil {
-		log.Println("Redis not available, continuing without cache:", err)
-		redisCache = nil
+		log.Fatal().Err(err).Msg("Failed to connect to Redis")
 	}
+	defer redis.Close()
 
-	authService := services.NewAuthService()
-	openAIService := services.NewOpenAIService()
-	geminiService := services.NewGeminiService()
+	srv := server.New(cfg, db, redis)
 
-	storageService, err := services.NewStorageService(context.Background())
-	if err != nil {
-		log.Println("R2 storage not configured, receipt upload will fail:", err)
-		storageService = nil
-	}
+	queueService := services.NewQueueService(redis.Client)
+	aiService := services.NewAIService(cfg)
+	exceptionService := services.NewExceptionService(db)
+	ruleService := services.NewRuleService(db)
+	storageService := services.NewStorageService(cfg)
+	worker := services.NewWorker(queueService, db, aiService, exceptionService, ruleService, storageService, cfg.WorkerConcurrency)
 
-	app := newApp(appDependencies{
-		db:             db,
-		authService:    authService,
-		storageService: storageService,
-		openAIService:  openAIService,
-		geminiService:  geminiService,
-		redisCache:     redisCache,
-		runtimeConfig:  runtimeConfig,
-	})
+	workerCtx, workerCancel := context.WithCancel(ctx)
+	defer workerCancel()
 
-	defer func() {
-		if redisCache != nil {
-			_ = redisCache.Close()
-		}
-	}()
+	go worker.Start(workerCtx)
 
-	serverErrors := make(chan error, 1)
 	go func() {
-		log.Printf("Server starting on port %s", runtimeConfig.Port)
-		serverErrors <- app.Listen(":" + runtimeConfig.Port)
+		log.Info().Str("port", cfg.Port).Msg("Starting server")
+		if err := srv.Start(); err != nil {
+			log.Fatal().Err(err).Msg("Server failed to start")
+		}
 	}()
 
-	shutdownSignals := make(chan os.Signal, 1)
-	signal.Notify(shutdownSignals, os.Interrupt, syscall.SIGTERM)
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
 
-	select {
-	case err := <-serverErrors:
-		if err != nil {
-			log.Fatal("Failed to start server:", err)
-		}
-	case sig := <-shutdownSignals:
-		log.Printf("Received signal %s, shutting down gracefully", sig)
-		if err := app.ShutdownWithTimeout(runtimeConfig.ShutdownTimeout); err != nil {
-			log.Fatal("Failed to shut down cleanly:", err)
-		}
+	log.Info().Msg("Shutting down server gracefully")
+
+	workerCancel()
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.App.ShutdownWithContext(shutdownCtx); err != nil {
+		log.Error().Err(err).Msg("Server shutdown error")
 	}
+
+	db.Close()
+	redis.Close()
+
+	log.Info().Msg("Server stopped cleanly")
 }
