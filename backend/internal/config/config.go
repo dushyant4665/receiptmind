@@ -22,6 +22,7 @@ type Config struct {
 	MaxFileSize       int64
 	OpenAIKey         string
 	OpenAIModel       string
+	GeminiKey         string
 	WorkerConcurrency int
 	RequestTimeout    time.Duration
 	SentryDSN         string
@@ -49,6 +50,7 @@ func Load() *Config {
 		MaxFileSize:       getEnvInt64("MAX_FILE_SIZE", 10*1024*1024),
 		OpenAIKey:         getEnv("OPENAI_KEY", getEnv("OPENAI_API_KEY", "")),
 		OpenAIModel:       getEnv("OPENAI_MODEL", getEnv("OPEN_MODEL", "gpt-4o")),
+		GeminiKey:         getEnv("GEMINI_API_KEY", ""),
 		WorkerConcurrency: getEnvInt("WORKER_CONCURRENCY", 5),
 		RequestTimeout:    time.Duration(getEnvInt("REQUEST_TIMEOUT_SECONDS", 10)) * time.Second,
 		SentryDSN:         getEnv("SENTRY_DSN", ""),
@@ -56,10 +58,10 @@ func Load() *Config {
 		FreeReceiptLimit:  getEnvInt("FREE_RECEIPT_LIMIT", 50),
 	}
 
-	if cfg.OpenAIKey == "" {
-		log.Warn().Msg("OPENAI_API_KEY is not set! AI extraction will fail.")
-	} else {
-		log.Info().Int("key_length", len(cfg.OpenAIKey)).Msg("OpenAI Key loaded")
+	if cfg.GeminiKey != "" {
+		log.Info().Msg("Gemini API Key loaded (Free Tier Active)")
+	} else if cfg.OpenAIKey == "" {
+		log.Warn().Msg("No AI API Keys found! Extraction will fail.")
 	}
 
 	return cfg

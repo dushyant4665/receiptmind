@@ -38,6 +38,12 @@ func NewAIService(cfg *config.Config) *AIService {
 func (a *AIService) ExtractReceiptData(ctx context.Context, fileBytes []byte) (*ExtractionResult, error) {
 	b64 := base64.StdEncoding.EncodeToString(fileBytes)
 
+	// Prefer Gemini if key is provided (Free tier friendly)
+	if a.config.GeminiKey != "" {
+		log.Info().Msg("Using Gemini 1.5 Flash for extraction")
+		return a.callGemini(ctx, b64)
+	}
+
 	var lastErr error
 	for attempt := 1; attempt <= 2; attempt++ {
 		result, err := a.callOpenAI(ctx, b64)
@@ -48,7 +54,96 @@ func (a *AIService) ExtractReceiptData(ctx context.Context, fileBytes []byte) (*
 		log.Warn().Err(err).Int("attempt", attempt).Msg("OpenAI call failed, retrying")
 	}
 
-	return nil, fmt.Errorf("openai extraction failed after 2 attempts: %w", lastErr)
+	return nil, fmt.Errorf("extraction failed: %w", lastErr)
+}
+
+func (a *AIService) callGemini(ctx context.Context, base64Image string) (*ExtractionResult, error) {
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=%s", a.config.GeminiKey)
+
+	prompt := `Extract the following fields from the receipt image and return ONLY valid JSON:
+{
+  "vendor_name": "string",
+  "amount": 0.00,
+  "receipt_date": "YYYY-MM-DD",
+  "category": "string",
+  "confidence": 0.00
+}
+Return only the JSON block, no markdown formatting.`
+
+	reqBody := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"parts": []map[string]interface{}{
+					{"text": prompt},
+					{
+						"inline_data": map[string]string{
+							"mime_type": "image/jpeg",
+							"data":      base64Image,
+						},
+					},
+				},
+			},
+		},
+		"generationConfig": map[string]interface{}{
+			"temperature":      0.1,
+			"topP":             0.95,
+			"topK":             64,
+			"maxOutputTokens":  1024,
+			"responseMimeType": "application/json",
+		},
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("gemini error %d: %s", resp.StatusCode, string(body))
+	}
+
+	var geminiResp struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+
+	if err := json.Unmarshal(body, &geminiResp); err != nil {
+		return nil, err
+	}
+
+	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+		return nil, fmt.Errorf("empty response from gemini")
+	}
+
+	var result ExtractionResult
+	contentText := geminiResp.Candidates[0].Content.Parts[0].Text
+	if err := json.Unmarshal([]byte(contentText), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse gemini output: %w", err)
+	}
+
+	return &result, nil
 }
 
 func (a *AIService) callOpenAI(ctx context.Context, base64Image string) (*ExtractionResult, error) {
