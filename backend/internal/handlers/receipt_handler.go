@@ -120,9 +120,10 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 
 	receiptID := uuid.New().String()
 
+	// 1. Save receipt IMMEDIATELY with 'processing' status and image
 	_, err = h.DB.Pool.Exec(ctx,
 		`INSERT INTO receipts (id, organization_id, user_id, file_path, file_url, file_name, file_hash, status, currency, line_items, is_billable, is_reimbursable, needs_review, source, raw_extraction, user_corrections, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', 'USD', '[]'::jsonb, false, false, false, 'upload', '{}'::jsonb, '{}'::jsonb, NOW())`,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, 'processing', 'USD', '[]'::jsonb, false, false, false, 'upload', '{}'::jsonb, '{}'::jsonb, NOW())`,
 		receiptID, orgID, userID, filePath, base64Data, file.Filename, fileHash,
 	)
 	if err != nil {
@@ -130,18 +131,20 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusInternalServerError, "failed to create receipt")
 	}
 
-	// 1. Process extraction immediately (Synchronous)
-	aiService := services.NewAIService(h.Config)
-	extraction, err := aiService.ExtractReceiptData(ctx, data)
+	// 2. Start AI processing in background so request doesn't timeout
+	go func(rID, oID string, imgData []byte) {
+		bgCtx := context.Background()
+		aiService := services.NewAIService(h.Config)
+		extraction, err := aiService.ExtractReceiptData(bgCtx, imgData)
 
-	status := "processed"
-	if err != nil {
-		log.Error().Err(err).Str("receipt_id", receiptID).Msg("AI extraction failed, marking as failed")
-		status = "failed"
-		_, _ = h.DB.Pool.Exec(ctx, "UPDATE receipts SET status = 'failed' WHERE id = $1", receiptID)
-	} else {
+		if err != nil {
+			log.Error().Err(err).Str("receipt_id", rID).Msg("Background AI extraction failed")
+			_, _ = h.DB.Pool.Exec(bgCtx, "UPDATE receipts SET status = 'failed' WHERE id = $1", rID)
+			return
+		}
+
 		// Apply rules
-		extraction = h.RuleService.ApplyRules(ctx, orgID, extraction)
+		extraction = h.RuleService.ApplyRules(bgCtx, oID, extraction)
 
 		var parsedDate *time.Time
 		if extraction.ReceiptDate != "" {
@@ -152,34 +155,30 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 		}
 
 		// Update DB with results
-		_, err = h.DB.Pool.Exec(ctx,
+		_, err = h.DB.Pool.Exec(bgCtx,
 			`UPDATE receipts SET 
 				status = 'processed',
 				vendor_name = $1, amount = $2, receipt_date = $3, category = $4, confidence = $5,
 				raw_vendor_name = $1, raw_amount = $2, raw_date = $3, raw_category = $4, raw_confidence = $5
 			 WHERE id = $6`,
 			extraction.VendorName, extraction.Amount, parsedDate, extraction.Category, extraction.Confidence,
-			receiptID,
+			rID,
 		)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to update receipt results in DB")
+			log.Error().Err(err).Msg("Failed to update background AI results")
 		}
-	}
 
-	// Invalidate caches
-	h.invalidateCache(orgID)
+		// Invalidate cache after background update
+		h.Redis.Del(bgCtx, fmt.Sprintf("receipts:%s:*", oID))
+	}(receiptID, orgID, data)
 
-	// Return full receipt object so UI updates instantly
+	// Return SUCCESS immediately with the saved data
 	return c.Status(fiber.StatusCreated).JSON(SuccessResponse(fiber.Map{
-		"id":          receiptID,
-		"status":      status,
-		"fileUrl":     base64Data,
-		"vendorName":  extraction.VendorName,
-		"amount":      extraction.Amount,
-		"category":    extraction.Category,
-		"confidence":  extraction.Confidence,
-		"receiptDate": extraction.ReceiptDate,
-		"createdAt":   time.Now().Format(time.RFC3339),
+		"id":         receiptID,
+		"status":     "processing",
+		"fileUrl":    base64Data,
+		"vendorName": "AI Extracting...",
+		"createdAt":  time.Now().Format(time.RFC3339),
 	}))
 }
 
