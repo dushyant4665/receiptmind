@@ -58,7 +58,7 @@ func (a *AIService) ExtractReceiptData(ctx context.Context, fileBytes []byte) (*
 }
 
 func (a *AIService) callGemini(ctx context.Context, base64Image string) (*ExtractionResult, error) {
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=%s", a.config.GeminiKey)
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=%s", a.config.GeminiKey)
 
 	prompt := `Extract the following fields from the receipt image and return ONLY valid JSON:
 {
