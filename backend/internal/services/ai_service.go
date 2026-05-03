@@ -31,7 +31,7 @@ type AIService struct {
 func NewAIService(cfg *config.Config) *AIService {
 	return &AIService{
 		config: cfg,
-		client: &http.Client{Timeout: 10 * time.Second},
+		client: &http.Client{Timeout: 60 * time.Second},
 	}
 }
 

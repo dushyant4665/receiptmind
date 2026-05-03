@@ -134,15 +134,24 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 	aiService := services.NewAIService(h.Config)
 	extraction, err := aiService.ExtractReceiptData(ctx, data)
 	if err != nil {
-		log.Error().Err(err).Str("receipt_id", receiptID).Msg("Sync extraction failed, falling back to background")
-		// Fallback to queue if AI fails once
-		_ = h.QueueService.Enqueue(ctx, "process_receipt", map[string]interface{}{
-			"receipt_id": receiptID,
-		})
+		log.Error().Err(err).Str("receipt_id", receiptID).Msg("AI extraction failed completely")
+		// Update DB to failed so it doesn't stay 'processing' forever
+		_, _ = h.DB.Pool.Exec(ctx,
+			"UPDATE receipts SET status = 'failed' WHERE id = $1",
+			receiptID,
+		)
+		return SendError(c, fiber.StatusInternalServerError, fmt.Sprintf("AI extraction failed: %v", err))
 	} else {
 		// Apply rules
 		extraction = h.RuleService.ApplyRules(ctx, orgID, extraction)
-		parsedDate, _ := time.Parse("2006-01-02", extraction.ReceiptDate)
+
+		var parsedDate *time.Time
+		if extraction.ReceiptDate != "" {
+			t, err := time.Parse("2006-01-02", extraction.ReceiptDate)
+			if err == nil {
+				parsedDate = &t
+			}
+		}
 
 		// Update DB with results immediately
 		_, err = h.DB.Pool.Exec(ctx,

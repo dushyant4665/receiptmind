@@ -56,6 +56,12 @@ func Load() *Config {
 		FreeReceiptLimit:  getEnvInt("FREE_RECEIPT_LIMIT", 50),
 	}
 
+	if cfg.OpenAIKey == "" {
+		log.Warn().Msg("OPENAI_API_KEY is not set! AI extraction will fail.")
+	} else {
+		log.Info().Int("key_length", len(cfg.OpenAIKey)).Msg("OpenAI Key loaded")
+	}
+
 	return cfg
 }
 
