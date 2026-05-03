@@ -171,9 +171,16 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 	// Invalidate caches
 	h.invalidateCache(orgID)
 
+	// Return the processed receipt immediately for the UI
 	return c.Status(fiber.StatusCreated).JSON(SuccessResponse(fiber.Map{
-		"receipt_id": receiptID,
-		"status":     "processed",
+		"id":          receiptID,
+		"status":      "processed",
+		"fileUrl":     base64Data,
+		"vendorName":  extraction.VendorName,
+		"amount":      extraction.Amount,
+		"category":    extraction.Category,
+		"confidence":  extraction.Confidence,
+		"receiptDate": extraction.ReceiptDate,
 	}))
 }
 

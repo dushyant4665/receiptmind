@@ -39,7 +39,18 @@ export function UploadDropzone() {
     }
 
     setIsUploading(true);
-    setProgress(18);
+    setProgress(5);
+
+    // Simulate progress while waiting for AI (0 to 95%)
+    const progressInterval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 95) {
+          clearInterval(progressInterval);
+          return 95;
+        }
+        return prev + Math.floor(Math.random() * 5) + 2;
+      });
+    }, 600);
 
     const now = new Date().toISOString();
     const optimisticReceipts: LocalOptimisticReceipt[] = Array.from(files).map((file) => ({
@@ -48,8 +59,8 @@ export function UploadDropzone() {
       userId: "",
       filePath: file.name,
       fileUrl: URL.createObjectURL(file),
-      status: "pending",
-      vendorName: "Processing...",
+      status: "processing",
+      vendorName: "AI Extracting...",
       amount: null,
       receiptDate: null,
       category: "",
@@ -69,37 +80,36 @@ export function UploadDropzone() {
     });
 
     try {
-      startTransition(() => {
-        window.setTimeout(() => setProgress(42), 150);
-        window.setTimeout(() => setProgress(66), 300);
-      });
-
-      const response = await uploadApiData<UploadResponse>("/receipts/upload", formData, {
+      const response = await uploadApiData<any>("/receipts/upload", formData, {
         authToken: session.accessToken,
       });
 
+      clearInterval(progressInterval);
+      setProgress(100);
+
+      toast.success("Receipt processed successfully!");
+
+      // Update the optimistic entry with real data
       queryClient.setQueryData<Receipt[]>(["receipts", session.accessToken], (current) => {
-        const updated = (current ?? []).map((receipt) => {
-          if (!("isOptimistic" in receipt) || (receipt as LocalOptimisticReceipt).isOptimistic !== true) {
-            return receipt;
+        return (current ?? []).map((receipt) => {
+          if ("isOptimistic" in receipt && (receipt as LocalOptimisticReceipt).isOptimistic) {
+            // Check if this is the one we just uploaded (heuristic match by filename/path if multiple)
+            return {
+              ...receipt,
+              ...response, // Use the full response from backend (id, vendorName, amount, etc.)
+              status: "processed",
+              isOptimistic: false,
+            } as Receipt;
           }
-
-          return {
-            ...receipt,
-            id: response.receipt_id,
-            status: "processing",
-          };
+          return receipt;
         });
-
-        return updated;
       });
 
-      setProgress(100);
-      toast.success("Receipt uploaded.");
       queryClient.invalidateQueries({ queryKey: ["receipts"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-activity"] });
     } catch (error: unknown) {
+      clearInterval(progressInterval);
       const err = error as { status?: number; message?: string };
       if (err?.status === 402) {
         setShowUpgradeModal(true);

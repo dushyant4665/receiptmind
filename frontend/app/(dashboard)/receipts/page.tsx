@@ -135,12 +135,14 @@ export default function ReceiptsPage() {
                           event.stopPropagation();
                           setPreviewReceipt(row);
                         }}
-                        className="block size-8 overflow-hidden rounded-md border border-border-default bg-bg-page"
+                        className="block size-8 overflow-hidden rounded-md border border-border-default bg-bg-page flex items-center justify-center"
                       >
                         {row.fileUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={row.fileUrl} alt={row.vendorName ?? "Receipt"} className="h-full w-full object-cover" loading="lazy" />
-                        ) : null}
+                        ) : (
+                          <div className="text-[8px] text-text-muted">No Image</div>
+                        )}
                       </button>
                     </td>
                     <td className="px-4 py-2.5 text-[12px] font-medium text-text-primary">
