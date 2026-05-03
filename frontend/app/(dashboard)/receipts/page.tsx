@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useMemo, useState, useCallback } from "react";
-import { Download } from "lucide-react";
+import { Download, Trash2 } from "lucide-react";
 import { SectionHeading } from "@/components/common/section-heading";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UploadDropzone } from "@/components/expenses/upload-dropzone";
-import { useReceipts, type ReceiptFilters } from "@/hooks/use-receipts";
+import { useReceipts, type ReceiptFilters, useDeleteReceipt } from "@/hooks/use-receipts";
 import { useCsvExport } from "@/hooks/use-csv-export";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -162,7 +162,10 @@ export default function ReceiptsPage() {
                     </td>
                     <td className="px-4 py-2.5">{renderStatus(row.status)}</td>
                     <td className="px-4 py-2.5 text-[12px]" onClick={(event) => event.stopPropagation()}>
-                      <Link href={`/receipts/${row.id}`} className="text-amber hover:text-amber-hover transition-colors">Open</Link>
+                      <div className="flex items-center gap-3">
+                        <Link href={`/receipts/${row.id}`} className="text-amber hover:text-amber-hover transition-colors">Open</Link>
+                        <DeleteButton id={row.id} />
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -261,5 +264,21 @@ export default function ReceiptsPage() {
         </Dialog>
       ) : null}
     </div>
+  );
+}
+
+function DeleteButton({ id }: { id: string }) {
+  const { mutate: deleteReceipt, isPending } = useDeleteReceipt();
+  return (
+    <button 
+      disabled={isPending}
+      onClick={(e) => {
+        e.stopPropagation();
+        if(confirm("Are you sure?")) deleteReceipt(id);
+      }}
+      className="text-destructive hover:opacity-70 transition-opacity"
+    >
+      <Trash2 className="size-4" />
+    </button>
   );
 }
