@@ -25,6 +25,8 @@ type Config struct {
 	WorkerConcurrency int
 	RequestTimeout    time.Duration
 	SentryDSN         string
+	EmailWebhookToken string
+	FreeReceiptLimit  int
 }
 
 func Load() *Config {
@@ -50,6 +52,8 @@ func Load() *Config {
 		WorkerConcurrency: getEnvInt("WORKER_CONCURRENCY", 5),
 		RequestTimeout:    time.Duration(getEnvInt("REQUEST_TIMEOUT_SECONDS", 10)) * time.Second,
 		SentryDSN:         getEnv("SENTRY_DSN", ""),
+		EmailWebhookToken: getEnv("EMAIL_WEBHOOK_TOKEN", ""),
+		FreeReceiptLimit:  getEnvInt("FREE_RECEIPT_LIMIT", 50),
 	}
 
 	return cfg
@@ -88,7 +92,7 @@ func (c *Config) IsDevelopment() bool {
 }
 
 func (c *Config) MaxDBConns() int {
-	return getEnvInt("MAX_DB_CONNS", 10)
+	return getEnvInt("MAX_DB_CONNS", 15)
 }
 
 func (c *Config) MinDBConns() int {

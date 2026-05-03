@@ -107,6 +107,19 @@ func RunMigrations(ctx context.Context, db *Database) error {
 		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS raw_extraction JSONB NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS user_corrections JSONB NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()`,
+		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS file_hash TEXT`,
+		`CREATE TABLE IF NOT EXISTS rule_learning_events (
+			id UUID PRIMARY KEY,
+			organization_id UUID NOT NULL REFERENCES organizations(id),
+			vendor TEXT NOT NULL,
+			chosen_category TEXT NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_rule_learning_org_vendor ON rule_learning_events(organization_id, vendor)`,
+		`CREATE INDEX IF NOT EXISTS idx_receipts_vendor ON receipts(vendor_name)`,
+		`CREATE INDEX IF NOT EXISTS idx_receipts_amount ON receipts(amount)`,
+		`CREATE INDEX IF NOT EXISTS idx_receipts_file_hash ON receipts(file_hash)`,
+		`CREATE INDEX IF NOT EXISTS idx_receipts_date ON receipts(receipt_date)`,
 	}
 
 	for i, m := range migrations {

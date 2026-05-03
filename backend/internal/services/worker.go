@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 
 	"receiptmind-backend/internal/database"
@@ -22,10 +23,11 @@ type Worker struct {
 	exceptionService *ExceptionService
 	ruleService      *RuleService
 	storageService   *StorageService
+	redis            *redis.Client
 	concurrency      int
 }
 
-func NewWorker(queue *QueueService, db *database.Database, aiSvc *AIService, exceptionSvc *ExceptionService, ruleSvc *RuleService, storageSvc *StorageService, concurrency int) *Worker {
+func NewWorker(queue *QueueService, db *database.Database, aiSvc *AIService, exceptionSvc *ExceptionService, ruleSvc *RuleService, storageSvc *StorageService, redisClient *redis.Client, concurrency int) *Worker {
 	if concurrency < 1 {
 		concurrency = 5
 	}
@@ -36,6 +38,7 @@ func NewWorker(queue *QueueService, db *database.Database, aiSvc *AIService, exc
 		exceptionService: exceptionSvc,
 		ruleService:      ruleSvc,
 		storageService:   storageSvc,
+		redis:            redisClient,
 		concurrency:      concurrency,
 	}
 }
@@ -190,6 +193,15 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 
 	if err := w.exceptionService.CheckAndCreate(ctx, &receipt, extraction); err != nil {
 		log.Error().Err(err).Str("receipt_id", receiptID).Msg("Exception check failed")
+	}
+
+	// Invalidate caches for this org
+	if w.redis != nil {
+		w.redis.Del(ctx, fmt.Sprintf("dashboard:%s", receipt.OrganizationID))
+		iter := w.redis.Scan(ctx, 0, fmt.Sprintf("receipts:%s:*", receipt.OrganizationID), 100).Iterator()
+		for iter.Next(ctx) {
+			w.redis.Del(ctx, iter.Val())
+		}
 	}
 
 	log.Info().

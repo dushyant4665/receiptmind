@@ -1,0 +1,483 @@
+{
+	"info": {
+		"_postman_id": "receiptmind-api-collection",
+		"name": "ReceiptMind API",
+		"description": "Complete collection for ReceiptMind Backend API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Register",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@example.com\",\n    \"password\": \"password123\",\n    \"organization_name\": \"My Business\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/register",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"register"
+							]
+						}
+					}
+				},
+				{
+					"name": "Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@example.com\",\n    \"password\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "User",
+			"item": [
+				{
+					"name": "Get Me",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/users/me",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"users",
+								"me"
+							]
+						}
+					}
+				},
+				{
+					"name": "Update Profile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"John Doe\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/users/me",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"users",
+								"me"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Receipts",
+			"item": [
+				{
+					"name": "Upload Receipt",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/receipts/upload",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"receipts",
+								"upload"
+							]
+						}
+					}
+				},
+				{
+					"name": "List Receipts",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/receipts?limit=10&offset=0",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"receipts"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "10"
+								},
+								{
+									"key": "offset",
+									"value": "0"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Receipt Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/receipts/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"receipts",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": ""
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Dashboard",
+			"item": [
+				{
+					"name": "Get Stats",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/dashboard",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"dashboard"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Exceptions",
+			"item": [
+				{
+					"name": "List Exceptions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/exceptions",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"exceptions"
+							]
+						}
+					}
+				},
+				{
+					"name": "Resolve Exception",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"vendor_name\": \"Corrected Vendor\",\n    \"amount\": 125.50,\n    \"receipt_date\": \"2024-05-03\",\n    \"category\": \"Food\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/exceptions/:id/resolve",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"exceptions",
+								":id",
+								"resolve"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": ""
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Email",
+			"item": [
+				{
+					"name": "Get Inbox Info",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/email/inbox",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"email",
+								"inbox"
+							]
+						}
+					}
+				},
+				{
+					"name": "Inbound Webhook (Secure)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Webhook-Token",
+								"value": "{{email_webhook_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"from\": \"user@example.com\",\n    \"subject\": \"Receipt from Amazon\",\n    \"message_id\": \"msg-12345\",\n    \"attachments\": [\n        {\n            \"filename\": \"receipt.pdf\",\n            \"content\": \"BASE64_ENCODED_FILE_CONTENT\"\n        }\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/email/inbound",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"email",
+								"inbound"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Rules",
+			"item": [
+				{
+					"name": "Create Rule",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"condition_type\": \"vendor\",\n    \"condition_value\": \"Amazon\",\n    \"action_type\": \"set_category\",\n    \"action_value\": \"Shopping\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/rules",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"rules"
+							]
+						}
+					}
+				},
+				{
+					"name": "List Rules",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/rules",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"rules"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Billing",
+			"item": [
+				{
+					"name": "Get Billing Status",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/billing/status",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"billing",
+								"status"
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Metrics",
+			"item": [
+				{
+					"name": "Get Metrics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{base_url}}/metrics",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"metrics"
+							]
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8085"
+		},
+		{
+			"key": "access_token",
+			"value": "your_jwt_here"
+		},
+		{
+			"key": "email_webhook_token",
+			"value": "your_email_webhook_token"
+		}
+	]
+}

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 type CsvExportParams = {
   startDate?: string;
   endDate?: string;
+  status?: string;
 };
 
 export function useCsvExport() {
@@ -20,6 +21,7 @@ export function useCsvExport() {
       const searchParams = new URLSearchParams();
       if (params.startDate) searchParams.set("start_date", params.startDate);
       if (params.endDate) searchParams.set("end_date", params.endDate);
+      if (params.status) searchParams.set("status", params.status);
 
       const query = searchParams.toString();
       const url = `${API_URL}/receipts/export/csv${query ? `?${query}` : ""}`;

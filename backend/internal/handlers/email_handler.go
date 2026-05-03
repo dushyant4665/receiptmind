@@ -50,6 +50,18 @@ type EmailAttachment struct {
 }
 
 func (h *EmailHandler) Inbound(c *fiber.Ctx) error {
+	// Validate webhook token
+	token := c.Get("X-Webhook-Token")
+	if token == "" {
+		token = c.Query("token")
+	}
+	if token == "" || token != h.Config.EmailWebhookToken {
+		return SendError(c, fiber.StatusUnauthorized, "invalid or missing webhook token")
+	}
+	if h.Config.EmailWebhookToken == "" {
+		return SendError(c, fiber.StatusUnauthorized, "webhook not configured")
+	}
+
 	var req EmailInboundRequest
 	if err := c.BodyParser(&req); err != nil {
 		return SendError(c, fiber.StatusBadRequest, "invalid request body")
@@ -111,11 +123,14 @@ func (h *EmailHandler) Inbound(c *fiber.Ctx) error {
 			continue
 		}
 
+		// Generate file hash for duplicate detection
+		fileHash := fmt.Sprintf("%x", sha256.Sum256(fileData))
+
 		receiptID := uuid.New().String()
 		_, err = h.DB.Pool.Exec(ctx,
-			`INSERT INTO receipts (id, organization_id, user_id, file_path, file_url, file_name, status, currency, line_items, is_billable, is_reimbursable, needs_review, source, raw_extraction, user_corrections, updated_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, 'pending', 'USD', '[]'::jsonb, false, false, false, 'email', '{}'::jsonb, '{}'::jsonb, NOW())`,
-			receiptID, orgID, userID, filePath, filePath, att.Filename,
+			`INSERT INTO receipts (id, organization_id, user_id, file_path, file_url, file_name, file_hash, status, currency, line_items, is_billable, is_reimbursable, needs_review, source, raw_extraction, user_corrections, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', 'USD', '[]'::jsonb, false, false, false, 'email', '{}'::jsonb, '{}'::jsonb, NOW())`,
+			receiptID, orgID, userID, filePath, filePath, att.Filename, fileHash,
 		)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to insert receipt from email")

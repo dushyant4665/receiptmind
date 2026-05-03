@@ -80,11 +80,20 @@ function mapException(e: BackendException): Exception {
   };
 }
 
-export function useReceipts(limit = 50, offset = 0) {
+export type ReceiptFilters = {
+  search?: string;
+  status?: string;
+  startDate?: string;
+  endDate?: string;
+  minAmount?: number;
+  maxAmount?: number;
+};
+
+export function useReceipts(limit = 50, offset = 0, filters?: ReceiptFilters) {
   const { data: session, status } = useSession();
 
   return useQuery({
-    queryKey: ["receipts", session?.accessToken, limit, offset],
+    queryKey: ["receipts", session?.accessToken, limit, offset, filters],
     enabled: status === "authenticated" && Boolean(session?.accessToken),
     refetchInterval: (query) => {
       const data = query.state.data as ReceiptListResponse | undefined;
@@ -95,8 +104,18 @@ export function useReceipts(limit = 50, offset = 0) {
     },
     refetchOnWindowFocus: true,
     queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("limit", String(limit));
+      params.set("offset", String(offset));
+      if (filters?.search) params.set("search", filters.search);
+      if (filters?.status) params.set("status", filters.status);
+      if (filters?.startDate) params.set("start_date", filters.startDate);
+      if (filters?.endDate) params.set("end_date", filters.endDate);
+      if (filters?.minAmount != null) params.set("min_amount", String(filters.minAmount));
+      if (filters?.maxAmount != null) params.set("max_amount", String(filters.maxAmount));
+
       const result = await getApiData<BackendReceiptListResponse>(
-        `/receipts?limit=${limit}&offset=${offset}`,
+        `/receipts?${params.toString()}`,
         { authToken: session?.accessToken },
       );
 
@@ -152,8 +171,14 @@ export function useUploadReceipt() {
       queryClient.invalidateQueries({ queryKey: ["receipts"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
     },
-    onError: (error: Error) => {
-      toast.error(error.message || "Upload failed");
+    onError: (error: Error & { status?: number }) => {
+      if (error.status === 402) {
+        toast.error("Monthly receipt limit reached. Upgrade your plan to continue.", { id: "paywall" });
+      } else if (error.status === 409) {
+        toast.error("This file was already uploaded (duplicate detected).", { id: "duplicate" });
+      } else {
+        toast.error(error.message || "Upload failed");
+      }
     },
   });
 }

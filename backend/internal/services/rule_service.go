@@ -134,18 +134,31 @@ func (r *RuleService) GetByOrganization(ctx context.Context, orgID string) ([]mo
 }
 
 func (r *RuleService) AutoLearnFromEdit(ctx context.Context, orgID, vendorName, newCategory string) {
-	var editCount int
-	err := r.db.Pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM receipts
-		 WHERE organization_id = $1 AND vendor_name = $2 AND category = $3 AND status = 'processed'`,
-		orgID, vendorName, newCategory,
-	).Scan(&editCount)
+	// Record the learning event
+	_, err := r.db.Pool.Exec(ctx,
+		`INSERT INTO rule_learning_events (id, organization_id, vendor, chosen_category)
+		 VALUES ($1, $2, $3, $4)`,
+		uuid.New().String(), orgID, vendorName, newCategory,
+	)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to count edits for auto-learn")
+		log.Error().Err(err).Msg("Failed to record learning event")
 		return
 	}
 
-	if editCount >= 3 {
+	// Count learning events for this vendor+category combo
+	var eventCount int
+	err = r.db.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM rule_learning_events
+		 WHERE organization_id = $1 AND vendor = $2 AND chosen_category = $3`,
+		orgID, vendorName, newCategory,
+	).Scan(&eventCount)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to count learning events")
+		return
+	}
+
+	if eventCount >= 3 {
+		// Check if rule already exists
 		var existingID string
 		err := r.db.Pool.QueryRow(ctx,
 			`SELECT id FROM rules
@@ -154,9 +167,16 @@ func (r *RuleService) AutoLearnFromEdit(ctx context.Context, orgID, vendorName, 
 		).Scan(&existingID)
 
 		if err == nil {
+			// Rule exists, update it
+			_, _ = r.db.Pool.Exec(ctx,
+				`UPDATE rules SET action_value = $1 WHERE id = $2`,
+				newCategory, existingID,
+			)
+			log.Info().Str("vendor", vendorName).Str("category", newCategory).Msg("Auto-learned rule updated")
 			return
 		}
 
+		// Create new rule
 		_, err = r.db.Pool.Exec(ctx,
 			`INSERT INTO rules (id, organization_id, condition_type, condition_value, action_type, action_value, is_active)
 			 VALUES ($1, $2, 'vendor', $3, 'set_category', $4, true)`,
@@ -170,6 +190,7 @@ func (r *RuleService) AutoLearnFromEdit(ctx context.Context, orgID, vendorName, 
 		log.Info().
 			Str("vendor", vendorName).
 			Str("category", newCategory).
-			Msg("Auto-learned rule created")
+			Int("events", eventCount).
+			Msg("Auto-learned rule created from learning events")
 	}
 }

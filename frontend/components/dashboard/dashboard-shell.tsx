@@ -19,16 +19,19 @@ import {
   Search,
   ChevronRight,
   Bell,
+  Zap,
 } from "lucide-react";
 import { Logo } from "@/components/common/logo";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useBillingStatus } from "@/hooks/use-billing";
 
 const navigation = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/receipts", label: "Receipts", icon: Receipt },
   { href: "/expenses", label: "Expenses", icon: CreditCard },
   { href: "/exceptions", label: "Exceptions", icon: AlertCircle, badge: 3 },
+  { href: "/rules", label: "Rules", icon: Zap },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/integrations", label: "Integrations", icon: Layers },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -52,9 +55,12 @@ type DashboardShellProps = {
 export function DashboardShell({ children, initialUser }: DashboardShellProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const { data: billing } = useBillingStatus();
   const displayName = session?.user?.name ?? initialUser?.name ?? "User";
   const displayEmail = session?.user?.email ?? initialUser?.email ?? "Enterprise";
   const initials = displayName.slice(0, 2).toUpperCase();
+
+  const usagePercent = billing ? Math.min(Math.round((billing.receipt_count_this_month / billing.receipt_limit) * 100), 100) : 0;
 
   return (
     <div className="min-h-screen bg-bg-page text-text-primary flex">
@@ -130,11 +136,12 @@ export function DashboardShell({ children, initialUser }: DashboardShellProps) {
           <div className="rounded-lg border border-border-default p-3 bg-bg-page/50">
             <div className="mb-2 flex items-center justify-between text-[10px] font-bold text-text-ghost uppercase tracking-widest">
               <span>Usage</span>
-              <span className="text-amber font-semibold">85%</span>
+              <span className={cn("font-semibold", usagePercent >= 90 ? "text-red" : "text-amber")}>{usagePercent}%</span>
             </div>
             <div className="h-1 rounded-full bg-border-default overflow-hidden">
-              <div className="h-full w-[85%] rounded-full bg-gradient-to-r from-amber to-amber-hover" />
+              <div className={cn("h-full rounded-full transition-all", usagePercent >= 90 ? "bg-red" : "bg-gradient-to-r from-amber to-amber-hover")} style={{ width: `${usagePercent}%` }} />
             </div>
+            <p className="mt-1.5 text-[10px] text-text-ghost">{billing?.receipt_count_this_month ?? 0} / {billing?.receipt_limit ?? 50} this month</p>
           </div>
 
           {/* User */}

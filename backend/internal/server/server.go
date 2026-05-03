@@ -78,13 +78,14 @@ func (s *Server) setupRoutes() {
 	healthHandler := handlers.NewHealthHandler(s.DB, s.Redis)
 	authHandler := handlers.NewAuthHandler(s.DB, s.JWTService)
 	userHandler := handlers.NewUserHandler(s.DB)
-	receiptHandler := handlers.NewReceiptHandler(s.DB, s.Config, s.StorageService, s.QueueService, s.ExceptionService, s.RuleService)
+	receiptHandler := handlers.NewReceiptHandler(s.DB, s.Config, s.StorageService, s.QueueService, s.ExceptionService, s.RuleService, s.Redis.Client)
 	exceptionHandler := handlers.NewExceptionHandler(s.DB, s.ExceptionService, s.RuleService)
 	ruleHandler := handlers.NewRuleHandler(s.DB, s.RuleService)
 	emailHandler := handlers.NewEmailHandler(s.DB, s.Config, s.StorageService, s.QueueService, s.Redis.Client)
 	exportHandler := handlers.NewExportHandler(s.DB)
 	dashboardHandler := handlers.NewDashboardHandler(s.DB, s.Redis.Client)
 	metricsHandler := handlers.NewMetricsHandler(s.DB, s.Redis.Client)
+	billingHandler := handlers.NewBillingHandler(s.DB, s.Config)
 
 	s.App.Get("/health", healthHandler.Health)
 	s.App.Get("/ready", healthHandler.Ready)
@@ -122,6 +123,8 @@ func (s *Server) setupRoutes() {
 	rules.Get("/", ruleHandler.ListRules)
 
 	s.App.Get("/dashboard", middleware.AuthProtected(s.JWTService), dashboardHandler.GetStats)
+
+	s.App.Get("/billing/status", middleware.AuthProtected(s.JWTService), billingHandler.GetStatus)
 
 	s.App.Get("/metrics", metricsHandler.GetMetrics)
 }

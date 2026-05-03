@@ -1,23 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { Download } from "lucide-react";
 import { SectionHeading } from "@/components/common/section-heading";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UploadDropzone } from "@/components/expenses/upload-dropzone";
-import { useReceipts } from "@/hooks/use-receipts";
+import { useReceipts, type ReceiptFilters } from "@/hooks/use-receipts";
 import { useCsvExport } from "@/hooks/use-csv-export";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Receipt } from "@/types";
 
-function CSVExportButton() {
+function CSVExportButton({ status }: { status: string }) {
   const { mutate: exportCsv, isPending } = useCsvExport();
 
   return (
-    <Button variant="outline" size="sm" onClick={() => exportCsv({})} disabled={isPending}>
+    <Button variant="outline" size="sm" onClick={() => exportCsv({ status: status !== "all" ? status : undefined })} disabled={isPending}>
       <Download className="mr-2 size-4" />
       {isPending ? "Downloading..." : "Export CSV"}
     </Button>
@@ -29,25 +29,16 @@ export default function ReceiptsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedReceiptId, setSelectedReceiptId] = useState<string | null>(null);
   const [previewReceipt, setPreviewReceipt] = useState<Receipt | null>(null);
-  const deferredQuery = useDeferredValue(query);
-  const { data, isLoading } = useReceipts();
+
+  const filters: ReceiptFilters = useMemo(() => ({
+    search: query || undefined,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+  }), [query, statusFilter]);
+
+  const { data, isLoading } = useReceipts(50, 0, filters);
 
   const receipts = data?.receipts ?? [];
-
-  const rows = useMemo(() => {
-    return receipts.filter((receipt) => {
-      const matchesQuery =
-        !deferredQuery ||
-        [receipt.vendorName, receipt.filePath, receipt.category, receipt.status]
-          .join(" ")
-          .toLowerCase()
-          .includes(deferredQuery.toLowerCase());
-
-      const matchesStatus = statusFilter === "all" || receipt.status === statusFilter;
-
-      return matchesQuery && matchesStatus;
-    });
-  }, [receipts, deferredQuery, statusFilter]);
+  const totalFromServer = data?.total ?? 0;
 
   const selectedReceipt = useMemo(() => {
     if (!selectedReceiptId) return null;
@@ -108,8 +99,8 @@ export default function ReceiptsPage() {
             </select>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-[11px] text-text-muted tabular-nums">{rows.length} receipts</span>
-            <CSVExportButton />
+            <span className="text-[11px] text-text-muted tabular-nums">{totalFromServer} receipts</span>
+            <CSVExportButton status={statusFilter} />
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -130,8 +121,8 @@ export default function ReceiptsPage() {
                     Loading receipts...
                   </td>
                 </tr>
-              ) : rows.length > 0 ? (
-                rows.map((row) => (
+              ) : receipts.length > 0 ? (
+                receipts.map((row) => (
                   <tr
                     key={row.id}
                     className="border-b border-border-subtle transition-colors cursor-pointer hover:bg-bg-page/50"
