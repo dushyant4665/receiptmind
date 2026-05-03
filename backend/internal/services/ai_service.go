@@ -58,102 +58,87 @@ func (a *AIService) ExtractReceiptData(ctx context.Context, fileBytes []byte) (*
 }
 
 func (a *AIService) callGemini(ctx context.Context, base64Image string) (*ExtractionResult, error) {
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=%s", a.config.GeminiKey)
+	// Try latest Gemini 2.0 Flash first, then 1.5 Pro as fallback
+	models := []string{"gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"}
+	var lastErr error
 
-	prompt := `Extract receipt data. Return ONLY a valid JSON object with these fields:
-{
-  "vendor_name": "Store name",
-  "amount": 12.34,
-  "receipt_date": "YYYY-MM-DD",
-  "category": "Food/Travel/Office/Utilities/Entertainment/Healthcare/General",
-  "confidence": 0.95
-}
-IMPORTANT: If you can't find a field, make a best guess or use "General" for category. DO NOT return markdown, just raw JSON.`
+	for _, model := range models {
+		url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, a.config.GeminiKey)
+		log.Info().Str("model", model).Msg("Attempting Gemini extraction")
 
-	reqBody := map[string]interface{}{
-		"contents": []map[string]interface{}{
-			{
-				"parts": []map[string]interface{}{
-					{"text": prompt},
-					{
-						"inline_data": map[string]string{
-							"mime_type": "image/jpeg",
-							"data":      base64Image,
+		prompt := `Extract receipt data. Return ONLY a valid JSON object. 
+Fields: vendor_name (string), amount (number), receipt_date (YYYY-MM-DD), category (string), confidence (number 0-1).
+Do not include markdown blocks or any other text.`
+
+		reqBody := map[string]interface{}{
+			"contents": []map[string]interface{}{
+				{
+					"parts": []map[string]interface{}{
+						{"text": prompt},
+						{
+							"inline_data": map[string]string{
+								"mime_type": "image/jpeg",
+								"data":      base64Image,
+							},
 						},
 					},
 				},
 			},
-		},
-		"generationConfig": map[string]interface{}{
-			"temperature":      0.1,
-			"topP":             0.95,
-			"topK":             64,
-			"maxOutputTokens":  1024,
-			"responseMimeType": "application/json",
-		},
+			"generationConfig": map[string]interface{}{
+				"temperature":      0.1,
+				"responseMimeType": "application/json",
+			},
+		}
+
+		jsonBody, _ := json.Marshal(reqBody)
+		req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := a.client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != 200 {
+			lastErr = fmt.Errorf("gemini %s error %d: %s", model, resp.StatusCode, string(body))
+			continue
+		}
+
+		var geminiResp struct {
+			Candidates []struct {
+				Content struct {
+					Parts []struct {
+						Text string `json:"text"`
+					} `json:"parts"`
+				} `json:"content"`
+			} `json:"candidates"`
+		}
+
+		if err := json.Unmarshal(body, &geminiResp); err != nil {
+			lastErr = err
+			continue
+		}
+
+		if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
+			lastErr = fmt.Errorf("empty response from %s", model)
+			continue
+		}
+
+		contentText := geminiResp.Candidates[0].Content.Parts[0].Text
+		var result ExtractionResult
+		if err := json.Unmarshal([]byte(contentText), &result); err != nil {
+			lastErr = err
+			continue
+		}
+
+		log.Info().Str("model", model).Msg("Gemini extraction successful")
+		return &result, nil
 	}
 
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonBody))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("gemini error %d: %s", resp.StatusCode, string(body))
-	}
-
-	var geminiResp struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
-
-	if err := json.Unmarshal(body, &geminiResp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal gemini response: %w", err)
-	}
-
-	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("empty response from gemini")
-	}
-
-	contentText := geminiResp.Candidates[0].Content.Parts[0].Text
-	log.Debug().Str("raw_ai_output", contentText).Msg("Gemini raw response")
-
-	var result ExtractionResult
-	if err := json.Unmarshal([]byte(contentText), &result); err != nil {
-		return nil, fmt.Errorf("failed to parse gemini JSON: %w", err)
-	}
-
-	// Basic validation
-	if result.VendorName == "" {
-		result.VendorName = "Unknown Vendor"
-	}
-	if result.Category == "" {
-		result.Category = "General"
-	}
-
-	return &result, nil
+	return nil, fmt.Errorf("all gemini models failed: %w", lastErr)
 }
 
 func (a *AIService) callOpenAI(ctx context.Context, base64Image string) (*ExtractionResult, error) {
