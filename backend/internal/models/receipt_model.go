@@ -9,6 +9,7 @@ type Receipt struct {
 	OrganizationID string     `json:"organization_id"`
 	UserID         string     `json:"user_id"`
 	FilePath       string     `json:"file_path"`
+	FileURL        string     `json:"file_url"`
 	Status         string     `json:"status"`
 	RawVendorName  *string    `json:"raw_vendor_name"`
 	RawAmount      *float64   `json:"raw_amount"`

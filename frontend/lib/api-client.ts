@@ -7,7 +7,7 @@ const API_BASE_URL = getApiUrl();
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10_000,
+  timeout: 30_000,
 });
 
 let isRedirecting = false;

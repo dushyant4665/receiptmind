@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -107,6 +109,9 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusConflict, fmt.Sprintf("duplicate: this file was already uploaded (receipt %s)", dupID))
 	}
 
+	// Generate Base64 for persistent storage on Render Free Tier
+	base64Data := "data:" + http.DetectContentType(data) + ";base64," + base64.StdEncoding.EncodeToString(data)
+
 	filePath, err := h.StorageService.UploadFile(data, file.Filename, orgID)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to upload file to storage")
@@ -118,27 +123,48 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 	_, err = h.DB.Pool.Exec(ctx,
 		`INSERT INTO receipts (id, organization_id, user_id, file_path, file_url, file_name, file_hash, status, currency, line_items, is_billable, is_reimbursable, needs_review, source, raw_extraction, user_corrections, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', 'USD', '[]'::jsonb, false, false, false, 'upload', '{}'::jsonb, '{}'::jsonb, NOW())`,
-		receiptID, orgID, userID, filePath, filePath, file.Filename, fileHash,
+		receiptID, orgID, userID, filePath, base64Data, file.Filename, fileHash,
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to insert receipt")
 		return SendError(c, fiber.StatusInternalServerError, "failed to create receipt")
 	}
 
-	err = h.QueueService.Enqueue(ctx, "process_receipt", map[string]interface{}{
-		"receipt_id": receiptID,
-	})
+	// 1. Process extraction immediately (Synchronous)
+	aiService := services.NewAIService(h.Config)
+	extraction, err := aiService.ExtractReceiptData(ctx, data)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to enqueue receipt job")
-		return SendError(c, fiber.StatusInternalServerError, "failed to queue receipt for processing")
+		log.Error().Err(err).Str("receipt_id", receiptID).Msg("Sync extraction failed, falling back to background")
+		// Fallback to queue if AI fails once
+		_ = h.QueueService.Enqueue(ctx, "process_receipt", map[string]interface{}{
+			"receipt_id": receiptID,
+		})
+	} else {
+		// Apply rules
+		extraction = h.RuleService.ApplyRules(ctx, orgID, extraction)
+		parsedDate, _ := time.Parse("2006-01-02", extraction.ReceiptDate)
+
+		// Update DB with results immediately
+		_, err = h.DB.Pool.Exec(ctx,
+			`UPDATE receipts SET 
+				status = 'processed',
+				vendor_name = $1, amount = $2, receipt_date = $3, category = $4, confidence = $5,
+				raw_vendor_name = $1, raw_amount = $2, raw_date = $3, raw_category = $4, raw_confidence = $5
+			 WHERE id = $6`,
+			extraction.VendorName, extraction.Amount, parsedDate, extraction.Category, extraction.Confidence,
+			receiptID,
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to update receipt results")
+		}
 	}
 
 	// Invalidate caches
 	h.invalidateCache(orgID)
 
-	return c.Status(fiber.StatusCreated).JSON(SuccessResponse(models.ReceiptUploadResponse{
-		ReceiptID: receiptID,
-		Status:    "pending",
+	return c.Status(fiber.StatusCreated).JSON(SuccessResponse(fiber.Map{
+		"receipt_id": receiptID,
+		"status":     "processed",
 	}))
 }
 
@@ -150,13 +176,13 @@ func (h *ReceiptHandler) GetReceipt(c *fiber.Ctx) error {
 
 	var receipt models.Receipt
 	err := h.DB.Pool.QueryRow(ctx,
-		`SELECT id, organization_id, user_id, file_path, status,
+		`SELECT id, organization_id, user_id, file_path, file_url, status,
 		        raw_vendor_name, raw_amount, raw_date, raw_category, raw_confidence,
 		        vendor_name, amount, receipt_date, category, confidence, created_at
 		 FROM receipts WHERE id = $1 AND organization_id = $2`,
 		receiptID, orgID,
 	).Scan(
-		&receipt.ID, &receipt.OrganizationID, &receipt.UserID, &receipt.FilePath, &receipt.Status,
+		&receipt.ID, &receipt.OrganizationID, &receipt.UserID, &receipt.FilePath, &receipt.FileURL, &receipt.Status,
 		&receipt.RawVendorName, &receipt.RawAmount, &receipt.RawDate, &receipt.RawCategory, &receipt.RawConfidence,
 		&receipt.VendorName, &receipt.Amount, &receipt.ReceiptDate, &receipt.Category, &receipt.Confidence, &receipt.CreatedAt,
 	)
@@ -213,7 +239,7 @@ func (h *ReceiptHandler) ListReceipts(c *fiber.Ctx) error {
 	}
 
 	// Build dynamic query with filters
-	query := `SELECT id, organization_id, user_id, file_path, status,
+	query := `SELECT id, organization_id, user_id, file_path, file_url, status,
 			          raw_vendor_name, raw_amount, raw_date, raw_category, raw_confidence,
 			          vendor_name, amount, receipt_date, category, confidence, created_at
 			   FROM receipts WHERE organization_id = $1`
@@ -295,7 +321,7 @@ func (h *ReceiptHandler) ListReceipts(c *fiber.Ctx) error {
 	for rows.Next() {
 		var r models.Receipt
 		if err := rows.Scan(
-			&r.ID, &r.OrganizationID, &r.UserID, &r.FilePath, &r.Status,
+			&r.ID, &r.OrganizationID, &r.UserID, &r.FilePath, &r.FileURL, &r.Status,
 			&r.RawVendorName, &r.RawAmount, &r.RawDate, &r.RawCategory, &r.RawConfidence,
 			&r.VendorName, &r.Amount, &r.ReceiptDate, &r.Category, &r.Confidence, &r.CreatedAt,
 		); err != nil {
@@ -486,9 +512,10 @@ func (h *ReceiptHandler) invalidateCache(orgID string) {
 }
 
 func (h *ReceiptHandler) mapReceipt(r models.Receipt) fiber.Map {
-	fileURL := r.FilePath
-	if fileURL != "" && !strings.HasPrefix(fileURL, "http") {
-		fileURL = "/uploads/" + r.FilePath
+	// If file_url starts with data: (Base64), use it directly
+	fileURL := r.FileURL
+	if fileURL == "" {
+		fileURL = r.FilePath
 	}
 
 	return fiber.Map{
