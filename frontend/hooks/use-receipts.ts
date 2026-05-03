@@ -97,8 +97,9 @@ export function useReceipts(limit = 50, offset = 0, filters?: ReceiptFilters) {
     enabled: status === "authenticated" && Boolean(session?.accessToken),
     refetchInterval: (query) => {
       const data = query.state.data as ReceiptListResponse | undefined;
+      // If any receipt is pending or processing, poll every 2 seconds
       if (data?.receipts?.some((r) => r.status === "pending" || r.status === "processing")) {
-        return 3000;
+        return 2000;
       }
       return false;
     },

@@ -125,6 +125,8 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 		return
 	}
 
+	log.Debug().Str("receipt_id", receiptID).Msg("Worker: Receipt status updated to processing")
+
 	var receipt models.Receipt
 	err = w.db.Pool.QueryRow(ctx,
 		"SELECT id, organization_id, user_id, file_path FROM receipts WHERE id = $1",
@@ -135,6 +137,8 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 		w.handleFailure(ctx, receiptID, job, err)
 		return
 	}
+
+	log.Debug().Str("receipt_id", receiptID).Str("file_path", receipt.FilePath).Msg("Worker: Processing file")
 
 	fileBytes, err := w.storageService.DownloadFile(ctx, receipt.FilePath)
 	if err != nil {

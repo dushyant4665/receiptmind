@@ -176,26 +176,9 @@ func (h *ReceiptHandler) GetReceipt(c *fiber.Ctx) error {
 
 	exceptions, _ := h.ExceptionService.GetByReceiptID(ctx, receiptID, orgID)
 
-	resp := fiber.Map{
-		"id":              receipt.ID,
-		"organization_id": receipt.OrganizationID,
-		"user_id":         receipt.UserID,
-		"file_path":       receipt.FilePath,
-		"status":          receipt.Status,
-		"raw_vendor_name": receipt.RawVendorName,
-		"raw_amount":      receipt.RawAmount,
-		"raw_date":        receipt.RawDate,
-		"raw_category":    receipt.RawCategory,
-		"raw_confidence":  receipt.RawConfidence,
-		"vendor_name":     receipt.VendorName,
-		"amount":          receipt.Amount,
-		"receipt_date":    receipt.ReceiptDate,
-		"category":        receipt.Category,
-		"confidence":      receipt.Confidence,
-		"created_at":      receipt.CreatedAt,
-		"file_url":        signedURL,
-		"exceptions":      exceptions,
-	}
+	resp := h.mapReceipt(receipt)
+	resp["file_url"] = signedURL
+	resp["exceptions"] = exceptions
 
 	return c.JSON(SuccessResponse(resp))
 }
@@ -499,5 +482,32 @@ func (h *ReceiptHandler) invalidateCache(orgID string) {
 	iter := h.Redis.Scan(ctx, 0, fmt.Sprintf("receipts:%s:*", orgID), 100).Iterator()
 	for iter.Next(ctx) {
 		h.Redis.Del(ctx, iter.Val())
+	}
+}
+
+func (h *ReceiptHandler) mapReceipt(r models.Receipt) fiber.Map {
+	fileURL := r.FilePath
+	if fileURL != "" && !strings.HasPrefix(fileURL, "http") {
+		fileURL = "/uploads/" + r.FilePath
+	}
+
+	return fiber.Map{
+		"id":             r.ID,
+		"organizationId": r.OrganizationID,
+		"userId":         r.UserID,
+		"filePath":       r.FilePath,
+		"fileUrl":        fileURL,
+		"status":         r.Status,
+		"rawVendorName":  r.RawVendorName,
+		"rawAmount":      r.RawAmount,
+		"rawDate":        r.RawDate,
+		"rawCategory":    r.RawCategory,
+		"rawConfidence":  r.RawConfidence,
+		"vendorName":     r.VendorName,
+		"amount":         r.Amount,
+		"receiptDate":    r.ReceiptDate,
+		"category":       r.Category,
+		"confidence":     r.Confidence,
+		"createdAt":      r.CreatedAt,
 	}
 }
