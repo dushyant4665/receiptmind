@@ -93,11 +93,16 @@ export function UploadDropzone() {
       queryClient.setQueryData<Receipt[]>(["receipts", session.accessToken], (current) => {
         return (current ?? []).map((receipt) => {
           if ("isOptimistic" in receipt && (receipt as LocalOptimisticReceipt).isOptimistic) {
-            // Check if this is the one we just uploaded (heuristic match by filename/path if multiple)
             return {
               ...receipt,
-              ...response, // Use the full response from backend (id, vendorName, amount, etc.)
-              status: "processed",
+              id: response.id,
+              status: response.status || "processed",
+              fileUrl: response.fileUrl || receipt.fileUrl,
+              vendorName: response.vendorName || "Unknown Vendor",
+              amount: response.amount,
+              category: response.category || "General",
+              confidence: response.confidence,
+              receiptDate: response.receiptDate,
               isOptimistic: false,
             } as Receipt;
           }

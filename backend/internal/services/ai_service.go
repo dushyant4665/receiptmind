@@ -60,15 +60,15 @@ func (a *AIService) ExtractReceiptData(ctx context.Context, fileBytes []byte) (*
 func (a *AIService) callGemini(ctx context.Context, base64Image string) (*ExtractionResult, error) {
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=%s", a.config.GeminiKey)
 
-	prompt := `Extract the following fields from the receipt image and return ONLY valid JSON:
+	prompt := `Extract receipt data. Return ONLY a valid JSON object with these fields:
 {
-  "vendor_name": "string",
-  "amount": 0.00,
+  "vendor_name": "Store name",
+  "amount": 12.34,
   "receipt_date": "YYYY-MM-DD",
-  "category": "string",
-  "confidence": 0.00
+  "category": "Food/Travel/Office/Utilities/Entertainment/Healthcare/General",
+  "confidence": 0.95
 }
-Return only the JSON block, no markdown formatting.`
+IMPORTANT: If you can't find a field, make a best guess or use "General" for category. DO NOT return markdown, just raw JSON.`
 
 	reqBody := map[string]interface{}{
 		"contents": []map[string]interface{}{
@@ -130,17 +130,27 @@ Return only the JSON block, no markdown formatting.`
 	}
 
 	if err := json.Unmarshal(body, &geminiResp); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal gemini response: %w", err)
 	}
 
 	if len(geminiResp.Candidates) == 0 || len(geminiResp.Candidates[0].Content.Parts) == 0 {
 		return nil, fmt.Errorf("empty response from gemini")
 	}
 
-	var result ExtractionResult
 	contentText := geminiResp.Candidates[0].Content.Parts[0].Text
+	log.Debug().Str("raw_ai_output", contentText).Msg("Gemini raw response")
+
+	var result ExtractionResult
 	if err := json.Unmarshal([]byte(contentText), &result); err != nil {
-		return nil, fmt.Errorf("failed to parse gemini output: %w", err)
+		return nil, fmt.Errorf("failed to parse gemini JSON: %w", err)
+	}
+
+	// Basic validation
+	if result.VendorName == "" {
+		result.VendorName = "Unknown Vendor"
+	}
+	if result.Category == "" {
+		result.Category = "General"
 	}
 
 	return &result, nil

@@ -133,14 +133,12 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 	// 1. Process extraction immediately (Synchronous)
 	aiService := services.NewAIService(h.Config)
 	extraction, err := aiService.ExtractReceiptData(ctx, data)
+
+	status := "processed"
 	if err != nil {
-		log.Error().Err(err).Str("receipt_id", receiptID).Msg("AI extraction failed completely")
-		// Update DB to failed so it doesn't stay 'processing' forever
-		_, _ = h.DB.Pool.Exec(ctx,
-			"UPDATE receipts SET status = 'failed' WHERE id = $1",
-			receiptID,
-		)
-		return SendError(c, fiber.StatusInternalServerError, fmt.Sprintf("AI extraction failed: %v", err))
+		log.Error().Err(err).Str("receipt_id", receiptID).Msg("AI extraction failed, marking as failed")
+		status = "failed"
+		_, _ = h.DB.Pool.Exec(ctx, "UPDATE receipts SET status = 'failed' WHERE id = $1", receiptID)
 	} else {
 		// Apply rules
 		extraction = h.RuleService.ApplyRules(ctx, orgID, extraction)
@@ -153,7 +151,7 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 			}
 		}
 
-		// Update DB with results immediately
+		// Update DB with results
 		_, err = h.DB.Pool.Exec(ctx,
 			`UPDATE receipts SET 
 				status = 'processed',
@@ -164,23 +162,24 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 			receiptID,
 		)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to update receipt results")
+			log.Error().Err(err).Msg("Failed to update receipt results in DB")
 		}
 	}
 
 	// Invalidate caches
 	h.invalidateCache(orgID)
 
-	// Return the processed receipt immediately for the UI
+	// Return full receipt object so UI updates instantly
 	return c.Status(fiber.StatusCreated).JSON(SuccessResponse(fiber.Map{
 		"id":          receiptID,
-		"status":      "processed",
+		"status":      status,
 		"fileUrl":     base64Data,
 		"vendorName":  extraction.VendorName,
 		"amount":      extraction.Amount,
 		"category":    extraction.Category,
 		"confidence":  extraction.Confidence,
 		"receiptDate": extraction.ReceiptDate,
+		"createdAt":   time.Now().Format(time.RFC3339),
 	}))
 }
 
