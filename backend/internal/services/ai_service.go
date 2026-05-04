@@ -24,6 +24,8 @@ type ExtractionResult struct {
 	ReceiptDate string  `json:"receipt_date"`
 	Category    string  `json:"category"`
 	Confidence  float64 `json:"confidence"`
+	RawText     string  `json:"-"`
+	AIOutput    string  `json:"-"`
 }
 
 type AIService struct {
@@ -167,6 +169,8 @@ Rules:
 		}
 
 		normalizeExtraction(result)
+		result.RawText = ocrText
+		result.AIOutput = contentText
 		log.Info().Str("model", model).Msg("AI extraction successful")
 		return result, nil
 	}
@@ -271,6 +275,7 @@ If a field cannot be determined, use null for strings, 0 for amount, and 0.0 for
 		return nil, fmt.Errorf("failed to parse extraction result: %w (content: %s)", err, content)
 	}
 	normalizeExtraction(result)
+	result.AIOutput = content
 
 	log.Info().
 		Str("vendor", result.VendorName).

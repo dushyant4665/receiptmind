@@ -106,6 +106,8 @@ func RunMigrations(ctx context.Context, db *Database) error {
 		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'upload'`,
 		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS raw_extraction JSONB NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS user_corrections JSONB NOT NULL DEFAULT '{}'`,
+		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS raw_text TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS ai_output JSONB NOT NULL DEFAULT '{}'`,
 		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()`,
 		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS file_hash TEXT`,
 		`CREATE TABLE IF NOT EXISTS rule_learning_events (

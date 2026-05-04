@@ -90,7 +90,10 @@ export function UploadDropzone() {
     }, 600);
 
     const now = new Date().toISOString();
-    const optimisticReceipts: LocalOptimisticReceipt[] = Array.from(files).map((file) => ({
+    // Backend processes ONE file per upload request, so we upload sequentially
+    const fileArray = Array.from(files);
+
+    const optimisticReceipts: LocalOptimisticReceipt[] = fileArray.map((file) => ({
       id: `local-${crypto.randomUUID()}`,
       organizationId: "",
       userId: "",
@@ -122,43 +125,45 @@ export function UploadDropzone() {
       ...(current ?? []),
     ]);
 
-    const formData = new FormData();
-    Array.from(files).forEach((file) => {
-      formData.append("file", file);
-    });
-
     try {
-      const response = await uploadApiData<UploadResponse>("/receipts/upload", formData, {
-        authToken: session.accessToken,
-      });
+      // Upload each file separately since backend processes one file per request
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
+        const optimistic = optimisticReceipts[i];
+        const formData = new FormData();
+        formData.append("file", file);
 
-      const receiptId = response.receipt_id || response.id;
-      // Store in global cache for immediate flicker-free display
-      if (receiptId && response.file_url) {
-        globalImageCache[receiptId] = response.file_url;
-      }
+        const response = await uploadApiData<UploadResponse>("/receipts/upload", formData, {
+          authToken: session.accessToken,
+        });
 
-      if (receiptId) {
-        const firstOptimistic = optimisticReceipts[0];
-        upsertReceiptIntoCache(
-          queryClient,
-          session.accessToken,
-          {
-            id: receiptId,
-            organizationId: "",
-            userId: "",
-            filePath: firstOptimistic?.filePath ?? "",
-            fileUrl: response.file_url ?? firstOptimistic?.fileUrl,
-            status: response.status || "processing",
-            vendorName: response.vendor_name || "AI Extracting...",
-            amount: null,
-            receiptDate: null,
-            category: "",
-            confidence: null,
-            createdAt: response.created_at || now,
-          },
-          new Set(optimisticReceipts.map((receipt) => receipt.id)),
-        );
+        const receiptId = response.receipt_id || response.id;
+        // Store in global cache for immediate flicker-free display
+        if (receiptId && response.file_url) {
+          globalImageCache[receiptId] = response.file_url;
+        }
+
+        if (receiptId) {
+          upsertReceiptIntoCache(
+            queryClient,
+            session.accessToken,
+            {
+              id: receiptId,
+              organizationId: "",
+              userId: "",
+              filePath: optimistic?.filePath ?? "",
+              fileUrl: response.file_url ?? optimistic?.fileUrl,
+              status: response.status || "processing",
+              vendorName: response.vendor_name || "AI Extracting...",
+              amount: null,
+              receiptDate: null,
+              category: "",
+              confidence: null,
+              createdAt: response.created_at || now,
+            },
+            new Set(optimisticReceipts.map((r) => r.id)),
+          );
+        }
       }
 
       clearInterval(progressInterval);

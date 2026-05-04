@@ -195,12 +195,14 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 			category = $10,
 			confidence = $11,
 			needs_review = $12,
+			raw_text = $13,
+			ai_output = COALESCE($14::jsonb, '{}'::jsonb),
 			updated_at = NOW()
-		WHERE id = $13`,
+		WHERE id = $15`,
 		newStatus,
 		nullStr(rawVendor), rawAmount, parsedDate, nullStr(rawCategory), rawConfidence,
 		nullStr(vendorName), amount, parsedDate, nullStr(category), confidence,
-		needsReview,
+		needsReview, extraction.RawText, extraction.AIOutput,
 		receiptID,
 	)
 	if err != nil {

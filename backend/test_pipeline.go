@@ -7,9 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/joho/godotenv"
 	"receiptmind-backend/internal/config"
 	"receiptmind-backend/internal/services"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -20,7 +21,7 @@ func main() {
 	}
 
 	cfg := config.Load()
-	
+
 	// Create the pipeline
 	pipeline := services.NewExtractionPipeline(cfg)
 
@@ -29,7 +30,7 @@ func main() {
 	if testFile == "" {
 		testFile = `c:\Users\Lenovo\OneDrive\Desktop\bookkeeper\receiptmind-enterprise\backend\uploads\174fb376-50b3-4502-a07e-be87379c74b4\2e018081-bc2c-4e3c-99c3-7eaf7c354142.pdf`
 	}
-	
+
 	data, err := os.ReadFile(testFile)
 	if err != nil {
 		fmt.Printf("Error reading test file: %v\n", err)
@@ -50,7 +51,7 @@ func main() {
 	fmt.Println("\n--- Extraction Result ---")
 	fmt.Println(string(output))
 	fmt.Println("-------------------------")
-	
+
 	if result.Confidence > 0.6 {
 		fmt.Println("✅ TEST SUCCESS: Data extracted with good confidence.")
 	} else {

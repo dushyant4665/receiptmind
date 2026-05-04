@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
@@ -127,10 +128,13 @@ func (h *EmailHandler) Inbound(c *fiber.Ctx) error {
 		fileHash := fmt.Sprintf("%x", sha256.Sum256(fileData))
 
 		receiptID := uuid.New().String()
+		// Generate Base64 for persistent storage (same as upload handler)
+		mimeType := http.DetectContentType(fileData)
+		base64Data := "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(fileData)
 		_, err = h.DB.Pool.Exec(ctx,
 			`INSERT INTO receipts (id, organization_id, user_id, file_path, file_url, file_name, file_hash, status, currency, line_items, is_billable, is_reimbursable, needs_review, source, raw_extraction, user_corrections, updated_at)
 			 VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', 'USD', '[]'::jsonb, false, false, false, 'email', '{}'::jsonb, '{}'::jsonb, NOW())`,
-			receiptID, orgID, userID, filePath, filePath, att.Filename, fileHash,
+			receiptID, orgID, userID, filePath, base64Data, att.Filename, fileHash,
 		)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to insert receipt from email")

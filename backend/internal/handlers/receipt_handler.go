@@ -183,12 +183,14 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 				vendor_name = $2, amount = $3, receipt_date = $4, category = $5, confidence = $6,
 				raw_vendor_name = $7, raw_amount = $8, raw_date = $9, raw_category = $10, raw_confidence = $11,
 				needs_review = $12,
+				raw_text = $13,
+				ai_output = COALESCE($14::jsonb, '{}'::jsonb),
 				updated_at = NOW()
-			 WHERE id = $13`,
+			 WHERE id = $15`,
 			status,
 			extraction.VendorName, extraction.Amount, parsedDate, extraction.Category, extraction.Confidence,
 			extraction.VendorName, extraction.Amount, parsedDate, extraction.Category, extraction.Confidence,
-			needsReview,
+			needsReview, extraction.RawText, extraction.AIOutput,
 			rID,
 		)
 		if err != nil {
