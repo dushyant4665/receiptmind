@@ -131,14 +131,14 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusInternalServerError, "failed to create receipt")
 	}
 
-	// 2. Start AI processing in background so request doesn't timeout
-	go func(rID, oID string, imgData []byte) {
+	// 2. Start AI processing in background using the new Pipeline
+	go func(rID, oID, fName string, imgData []byte) {
 		bgCtx := context.Background()
-		aiService := services.NewAIService(h.Config)
-		extraction, err := aiService.ExtractReceiptData(bgCtx, imgData)
+		pipeline := services.NewExtractionPipeline(h.Config)
+		extraction, err := pipeline.Process(bgCtx, imgData, fName)
 
 		if err != nil {
-			log.Error().Err(err).Str("receipt_id", rID).Msg("Background AI extraction failed")
+			log.Error().Err(err).Str("receipt_id", rID).Msg("Background Extraction Pipeline failed")
 			_, _ = h.DB.Pool.Exec(bgCtx, "UPDATE receipts SET status = 'failed' WHERE id = $1", rID)
 			return
 		}
@@ -170,7 +170,7 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 
 		// Invalidate cache after background update
 		h.Redis.Del(bgCtx, fmt.Sprintf("receipts:%s:*", oID))
-	}(receiptID, orgID, data)
+	}(receiptID, orgID, file.Filename, data)
 
 	// Return SUCCESS immediately with the saved data
 	return c.Status(fiber.StatusCreated).JSON(SuccessResponse(fiber.Map{

@@ -57,18 +57,22 @@ func (a *AIService) ExtractReceiptData(ctx context.Context, fileBytes []byte) (*
 	return nil, fmt.Errorf("extraction failed: %w", lastErr)
 }
 
-func (a *AIService) callGemini(ctx context.Context, base64Image string) (*ExtractionResult, error) {
+func (a *AIService) ExtractWithContext(ctx context.Context, imageData []byte, ocrText string) (*ExtractionResult, error) {
+	base64Image := base64.StdEncoding.EncodeToString(imageData)
+
 	// Try latest Gemini models confirmed from models_list.json
 	models := []string{"models/gemini-2.0-flash", "models/gemini-2.0-flash-lite", "models/gemini-flash-latest"}
 	var lastErr error
 
 	for _, model := range models {
 		url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/%s:generateContent?key=%s", model, a.config.GeminiKey)
-		log.Info().Str("model", model).Msg("Attempting Gemini extraction")
 
-		prompt := `Extract receipt data. Return ONLY a valid JSON object. 
+		prompt := fmt.Sprintf(`Extract structured receipt data from the provided image and OCR text.
+OCR Text context: %s
+
+Return ONLY a valid JSON object. 
 Fields: vendor_name (string), amount (number), receipt_date (YYYY-MM-DD), category (string), confidence (number 0-1).
-Do not include markdown blocks or any other text.`
+Rules: Amount must be numeric, Date must be ISO format.`, ocrText)
 
 		reqBody := map[string]interface{}{
 			"contents": []map[string]interface{}{
@@ -134,11 +138,16 @@ Do not include markdown blocks or any other text.`
 			continue
 		}
 
-		log.Info().Str("model", model).Msg("Gemini extraction successful")
 		return &result, nil
 	}
 
 	return nil, fmt.Errorf("all gemini models failed: %w", lastErr)
+}
+
+func (a *AIService) callGemini(ctx context.Context, base64Image string) (*ExtractionResult, error) {
+	// Redirect old calls to new context-aware method with empty OCR text
+	data, _ := base64.StdEncoding.DecodeString(base64Image)
+	return a.ExtractWithContext(ctx, data, "")
 }
 
 func (a *AIService) callOpenAI(ctx context.Context, base64Image string) (*ExtractionResult, error) {
