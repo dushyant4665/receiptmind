@@ -84,6 +84,11 @@ export function UploadDropzone() {
         authToken: session.accessToken,
       });
 
+      // Store in global cache for immediate flicker-free display
+      if (response.id && response.file_url) {
+        globalImageCache[response.id] = response.file_url;
+      }
+
       clearInterval(progressInterval);
       setProgress(100);
 

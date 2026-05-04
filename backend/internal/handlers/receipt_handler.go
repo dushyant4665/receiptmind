@@ -110,7 +110,8 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 	}
 
 	// Generate Base64 for persistent storage on Render Free Tier
-	base64Data := "data:" + http.DetectContentType(data) + ";base64," + base64.StdEncoding.EncodeToString(data)
+	mimeType := http.DetectContentType(data)
+	base64Data := "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(data)
 
 	filePath, err := h.StorageService.UploadFile(data, file.Filename, orgID)
 	if err != nil {

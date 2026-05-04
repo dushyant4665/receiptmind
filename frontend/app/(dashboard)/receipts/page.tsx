@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState } from "react";
 import { Download, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,9 @@ import { useCsvExport } from "@/hooks/use-csv-export";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Receipt } from "@/types";
+
+// In-memory cache for newly uploaded receipts to guarantee images show up instantly
+export const globalImageCache: Record<string, string> = {};
 
 function CSVExportButton({ status }: { status: string }) {
   const { mutate: exportCsv, isPending } = useCsvExport();
@@ -44,7 +47,10 @@ export default function ReceiptsPage() {
 
   const selectedReceipt = useMemo(() => {
     if (!selectedReceiptId) return null;
-    return receipts.find((r) => r.id === selectedReceiptId) ?? null;
+    const found = receipts.find((r) => r.id === selectedReceiptId);
+    if (!found) return null;
+    // Inject cached image if backend hasn't synced yet
+    return { ...found, fileUrl: found.fileUrl || globalImageCache[found.id] };
   }, [receipts, selectedReceiptId]);
 
   const renderStatus = (status: string) => {
@@ -158,65 +164,68 @@ export default function ReceiptsPage() {
               {isLoading ? (
                 <tr><td colSpan={9} className="text-center py-10 text-[12px] text-text-muted">Loading receipts...</td></tr>
               ) : receipts.length > 0 ? (
-                receipts.map((row) => (
-                  <tr
-                    key={row.id}
-                    className={`border-b border-border-subtle transition-colors cursor-pointer hover:bg-bg-page/50 ${selectedIds.has(row.id) ? 'bg-amber-surface/20' : ''}`}
-                    onClick={() => setSelectedReceiptId(row.id)}
-                  >
-                    <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
-                      <input 
-                        type="checkbox" 
-                        className="rounded border-border-default text-amber focus:ring-amber cursor-pointer"
-                        checked={selectedIds.has(row.id)}
-                        onChange={() => toggleSelect(row.id)}
-                      />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setPreviewReceipt(row);
-                        }}
-                        className="block size-8 overflow-hidden rounded-md border border-border-default bg-bg-page flex items-center justify-center"
-                      >
-                        {row.fileUrl ? (
-                          <img 
-                            src={row.fileUrl.startsWith('data:') ? row.fileUrl : `${process.env.NEXT_PUBLIC_API_URL}${row.fileUrl}`} 
-                            alt={row.vendorName ?? "Receipt"} 
-                            className="h-full w-full object-cover" 
-                            loading="lazy" 
-                          />
-                        ) : (
-                          <div className="text-[8px] text-text-muted">No Image</div>
-                        )}
-                      </button>
-                    </td>
-                    <td className="px-4 py-2.5 text-[12px] font-medium text-text-primary">
-                      {row.vendorName || "Unknown"}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-[12px] text-text-muted tabular-nums">
-                      {row.amount != null ? `$${row.amount.toFixed(2)}` : "—"}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-[11px] text-text-ghost tabular-nums">
-                      {row.receiptDate ?? "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-[12px] text-text-secondary">
-                      {row.category || "Uncategorized"}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-[11px] text-text-ghost tabular-nums">
-                      {row.confidence != null ? `${(row.confidence * 100).toFixed(0)}%` : "—"}
-                    </td>
-                    <td className="px-4 py-2.5">{renderStatus(row.status)}</td>
-                    <td className="px-4 py-2.5 text-[12px]" onClick={(event) => event.stopPropagation()}>
-                      <div className="flex items-center gap-3">
-                        <Link href={`/receipts/${row.id}`} className="text-amber hover:text-amber-hover transition-colors">Open</Link>
-                        <DeleteButton id={row.id} />
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                receipts.map((row) => {
+                  const displayUrl = row.fileUrl || globalImageCache[row.id];
+                  return (
+                    <tr
+                      key={row.id}
+                      className={`border-b border-border-subtle transition-colors cursor-pointer hover:bg-bg-page/50 ${selectedIds.has(row.id) ? 'bg-amber-surface/20' : ''}`}
+                      onClick={() => setSelectedReceiptId(row.id)}
+                    >
+                      <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-border-default text-amber focus:ring-amber cursor-pointer"
+                          checked={selectedIds.has(row.id)}
+                          onChange={() => toggleSelect(row.id)}
+                        />
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setPreviewReceipt({ ...row, fileUrl: displayUrl });
+                          }}
+                          className="block size-8 overflow-hidden rounded-md border border-border-default bg-bg-page flex items-center justify-center"
+                        >
+                          {displayUrl ? (
+                            <img 
+                              src={displayUrl.startsWith('data:') ? displayUrl : `${process.env.NEXT_PUBLIC_API_URL}${displayUrl}`} 
+                              alt={row.vendorName ?? "Receipt"} 
+                              className="h-full w-full object-cover" 
+                              loading="lazy" 
+                            />
+                          ) : (
+                            <div className="text-[8px] text-text-muted">No Image</div>
+                          )}
+                        </button>
+                      </td>
+                      <td className="px-4 py-2.5 text-[12px] font-medium text-text-primary">
+                        {row.vendorName || "Unknown"}
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-[12px] text-text-muted tabular-nums">
+                        {row.amount != null ? `$${row.amount.toFixed(2)}` : "—"}
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-[11px] text-text-ghost tabular-nums">
+                        {row.receiptDate ?? "—"}
+                      </td>
+                      <td className="px-4 py-2.5 text-[12px] text-text-secondary">
+                        {row.category || "Uncategorized"}
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-[11px] text-text-ghost tabular-nums">
+                        {row.confidence != null ? `${(row.confidence * 100).toFixed(0)}%` : "—"}
+                      </td>
+                      <td className="px-4 py-2.5">{renderStatus(row.status)}</td>
+                      <td className="px-4 py-2.5 text-[12px]" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex items-center gap-3">
+                          <Link href={`/receipts/${row.id}`} className="text-amber hover:text-amber-hover transition-colors">Open</Link>
+                          <DeleteButton id={row.id} />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr><td colSpan={9} className="text-center py-10 text-[12px] text-text-muted">No receipts found yet.</td></tr>
               )}
