@@ -526,29 +526,17 @@ func (h *ReceiptHandler) invalidateCache(orgID string) {
 }
 
 func (h *ReceiptHandler) mapReceipt(r models.Receipt) fiber.Map {
-	// If file_url starts with data: (Base64), use it directly
-	fileURL := r.FileURL
-	if fileURL == "" {
-		fileURL = r.FilePath
-	}
-
 	return fiber.Map{
-		"id":             r.ID,
-		"organizationId": r.OrganizationID,
-		"userId":         r.UserID,
-		"filePath":       r.FilePath,
-		"fileUrl":        fileURL,
-		"status":         r.Status,
-		"rawVendorName":  r.RawVendorName,
-		"rawAmount":      r.RawAmount,
-		"rawDate":        r.RawDate,
-		"rawCategory":    r.RawCategory,
-		"rawConfidence":  r.RawConfidence,
-		"vendorName":     r.VendorName,
-		"amount":         r.Amount,
-		"receiptDate":    r.ReceiptDate,
-		"category":       r.Category,
-		"confidence":     r.Confidence,
-		"createdAt":      r.CreatedAt,
+		"id":              r.ID,
+		"organization_id": r.OrganizationID,
+		"user_id":         r.UserID,
+		"status":          r.Status,
+		"vendor_name":     r.VendorName,
+		"amount":          r.Amount,
+		"receipt_date":    r.ReceiptDate,
+		"category":        r.Category,
+		"confidence":      r.Confidence,
+		"file_url":        r.FileURL,
+		"created_at":      r.CreatedAt,
 	}
 }
