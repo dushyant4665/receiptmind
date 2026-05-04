@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { UpgradeModal } from "@/components/billing/upgrade-modal";
 import { uploadApiData } from "@/lib/api-client";
-import type { Receipt } from "@/types";
+import { globalImageCache } from "@/lib/image-cache";
+import type { Receipt, LocalOptimisticReceipt } from "@/types";
 
 type UploadResponse = {
   receipt_id: string;

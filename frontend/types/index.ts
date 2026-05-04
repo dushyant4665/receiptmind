@@ -43,8 +43,12 @@ export type Receipt = {
   exceptions?: Exception[];
 };
 
+export type LocalOptimisticReceipt = Receipt & {
+  isOptimistic: boolean;
+};
+
 export type ReceiptListResponse = {
-  receipts: Receipt[];
+  receipts: (Receipt | LocalOptimisticReceipt)[];
   total: number;
   limit: number;
   offset: number;
