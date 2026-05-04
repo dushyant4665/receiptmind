@@ -174,11 +174,11 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 
 	// Return SUCCESS immediately with the saved data
 	return c.Status(fiber.StatusCreated).JSON(SuccessResponse(fiber.Map{
-		"id":         receiptID,
-		"status":     "processing",
-		"fileUrl":    base64Data,
-		"vendorName": "AI Extracting...",
-		"createdAt":  time.Now().Format(time.RFC3339),
+		"id":          receiptID,
+		"status":      "processing",
+		"file_url":    base64Data, // frontend expects file_url or fileUrl
+		"vendor_name": "AI Extracting...",
+		"created_at":  time.Now().Format(time.RFC3339),
 	}))
 }
 

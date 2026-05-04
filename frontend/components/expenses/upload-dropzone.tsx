@@ -87,32 +87,17 @@ export function UploadDropzone() {
       clearInterval(progressInterval);
       setProgress(100);
 
-      toast.success("Receipt processed successfully!");
+      toast.success("Receipt uploaded and processing started!");
 
-      // Update the optimistic entry with real data
-      queryClient.setQueryData<Receipt[]>(["receipts", session.accessToken], (current) => {
-        return (current ?? []).map((receipt) => {
-          if ("isOptimistic" in receipt && (receipt as LocalOptimisticReceipt).isOptimistic) {
-            return {
-              ...receipt,
-              id: response.id,
-              status: response.status || "processed",
-              fileUrl: response.fileUrl || receipt.fileUrl,
-              vendorName: response.vendorName || "Unknown Vendor",
-              amount: response.amount,
-              category: response.category || "General",
-              confidence: response.confidence,
-              receiptDate: response.receiptDate,
-              isOptimistic: false,
-            } as Receipt;
-          }
-          return receipt;
-        });
-      });
+      // Force immediate refresh and clear progress after a small delay
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["receipts"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard-activity"] });
+        setProgress(0);
+        setIsUploading(false);
+      }, 800);
 
-      queryClient.invalidateQueries({ queryKey: ["receipts"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-activity"] });
     } catch (error: unknown) {
       clearInterval(progressInterval);
       const err = error as { status?: number; message?: string };
