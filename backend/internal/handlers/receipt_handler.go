@@ -132,55 +132,70 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusInternalServerError, "failed to create receipt")
 	}
 
-	// 2. Start AI processing in background using the new Pipeline
-	go func(rID, oID, fName string, imgData []byte) {
-		bgCtx := context.Background()
-		pipeline := services.NewExtractionPipeline(h.Config)
-		extraction, err := pipeline.Process(bgCtx, imgData, fName)
+	// 2. Queue for background processing using Redis (Production-grade)
+	jobPayload := map[string]interface{}{
+		"receipt_id": receiptID,
+	}
+	err = h.QueueService.Enqueue(ctx, "process_receipt", jobPayload)
+	if err != nil {
+		log.Error().Err(err).Str("receipt_id", receiptID).Msg("Failed to enqueue background job")
+		// Fallback to background goroutine if Redis queue fails
+		go func(rID, oID, fName string, imgData []byte) {
+			bgCtx := context.Background()
+			pipeline := services.NewExtractionPipeline(h.Config)
+			log.Info().Str("receipt_id", rID).Msg("Starting fallback goroutine extraction")
+			extraction, err := pipeline.Process(bgCtx, imgData, fName)
 
-		if err != nil {
-			log.Error().Err(err).Str("receipt_id", rID).Msg("Background Extraction Pipeline failed")
-			_, _ = h.DB.Pool.Exec(bgCtx, "UPDATE receipts SET status = 'failed' WHERE id = $1", rID)
-			return
-		}
-
-		// Apply rules
-		extraction = h.RuleService.ApplyRules(bgCtx, oID, extraction)
-
-		var parsedDate *time.Time
-		if extraction.ReceiptDate != "" {
-			t, err := time.Parse("2006-01-02", extraction.ReceiptDate)
-			if err == nil {
-				parsedDate = &t
+			if err != nil {
+				log.Error().Err(err).Str("receipt_id", rID).Msg("Fallback extraction failed")
+				_, _ = h.DB.Pool.Exec(bgCtx, "UPDATE receipts SET status = 'failed' WHERE id = $1", rID)
+				return
 			}
-		}
+			h.finishProcessing(bgCtx, rID, oID, extraction)
+		}(receiptID, orgID, file.Filename, data)
+	}
 
-		// Update DB with results
-		_, err = h.DB.Pool.Exec(bgCtx,
-			`UPDATE receipts SET 
-				status = 'processed',
-				vendor_name = $1, amount = $2, receipt_date = $3, category = $4, confidence = $5,
-				raw_vendor_name = $1, raw_amount = $2, raw_date = $3, raw_category = $4, raw_confidence = $5
-			 WHERE id = $6`,
-			extraction.VendorName, extraction.Amount, parsedDate, extraction.Category, extraction.Confidence,
-			rID,
-		)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to update background AI results")
-		}
+	log.Info().Str("receipt_id", receiptID).Msg("Receipt upload successful, processing queued")
 
-		// Invalidate cache after background update
-		h.Redis.Del(bgCtx, fmt.Sprintf("receipts:%s:*", oID))
-	}(receiptID, orgID, file.Filename, data)
-
-	// Return SUCCESS immediately with the saved data
+	// Return SUCCESS immediately
 	return c.Status(fiber.StatusCreated).JSON(SuccessResponse(fiber.Map{
 		"id":          receiptID,
 		"status":      "processing",
-		"file_url":    base64Data, // frontend expects file_url or fileUrl
+		"file_url":    base64Data,
 		"vendor_name": "AI Extracting...",
 		"created_at":  time.Now().Format(time.RFC3339),
 	}))
+}
+
+func (h *ReceiptHandler) finishProcessing(ctx context.Context, rID, oID string, extraction *services.ExtractionResult) {
+	// Apply rules
+	extraction = h.RuleService.ApplyRules(ctx, oID, extraction)
+
+	var parsedDate *time.Time
+	if extraction.ReceiptDate != "" {
+		t, err := time.Parse("2006-01-02", extraction.ReceiptDate)
+		if err == nil {
+			parsedDate = &t
+		}
+	}
+
+	// Update DB with results
+	_, err := h.DB.Pool.Exec(ctx,
+		`UPDATE receipts SET 
+			status = 'processed',
+			vendor_name = $1, amount = $2, receipt_date = $3, category = $4, confidence = $5,
+			raw_vendor_name = $1, raw_amount = $2, raw_date = $3, raw_category = $4, raw_confidence = $5
+		 WHERE id = $6`,
+		extraction.VendorName, extraction.Amount, parsedDate, extraction.Category, extraction.Confidence,
+		rID,
+	)
+	if err != nil {
+		log.Error().Err(err).Str("receipt_id", rID).Msg("Failed to update background AI results")
+	}
+
+	// Invalidate cache
+	h.Redis.Del(ctx, fmt.Sprintf("receipts:%s:*", oID))
+	log.Info().Str("receipt_id", rID).Msg("Processing finished successfully")
 }
 
 func (h *ReceiptHandler) GetReceipt(c *fiber.Ctx) error {
