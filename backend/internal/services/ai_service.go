@@ -58,12 +58,12 @@ func (a *AIService) ExtractReceiptData(ctx context.Context, fileBytes []byte) (*
 }
 
 func (a *AIService) callGemini(ctx context.Context, base64Image string) (*ExtractionResult, error) {
-	// Try latest Gemini 2.0 Flash first, then 1.5 Pro as fallback
-	models := []string{"gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"}
+	// Try latest Gemini models confirmed from models_list.json
+	models := []string{"models/gemini-2.0-flash", "models/gemini-2.0-flash-lite", "models/gemini-flash-latest"}
 	var lastErr error
 
 	for _, model := range models {
-		url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, a.config.GeminiKey)
+		url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/%s:generateContent?key=%s", model, a.config.GeminiKey)
 		log.Info().Str("model", model).Msg("Attempting Gemini extraction")
 
 		prompt := `Extract receipt data. Return ONLY a valid JSON object. 

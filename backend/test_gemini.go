@@ -21,32 +21,36 @@ func main() {
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=%s", apiKey)
+	models := []string{"gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"}
 
-	reqBody := map[string]interface{}{
-		"contents": []map[string]interface{}{
-			{
-				"parts": []map[string]interface{}{
-					{"text": "Hello, are you working? Respond with 'YES' if you are."},
+	for _, model := range models {
+		fmt.Printf("\n--- Testing Model: %s ---\n", model)
+		url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
+
+		reqBody := map[string]interface{}{
+			"contents": []map[string]interface{}{
+				{
+					"parts": []map[string]interface{}{
+						{"text": "Hello, respond with ONLY the word SUCCESS if you are working."},
+					},
 				},
 			},
-		},
-	}
+		}
 
-	jsonBody, _ := json.Marshal(reqBody)
+		jsonBody, _ := json.Marshal(reqBody)
+		resp, err := client.Post(url, "application/json", bytes.NewReader(jsonBody))
+		if err != nil {
+			fmt.Printf("Request failed for %s: %v\n", model, err)
+			continue
+		}
 
-	fmt.Println("Testing Gemini API with gemini-flash-latest...")
-	resp, err := client.Post(url, "application/json", bytes.NewReader(jsonBody))
-	if err != nil {
-		fmt.Printf("Request failed: %v\n", err)
-		return
-	}
-	defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		fmt.Printf("Error %d: %s\n", resp.StatusCode, string(body))
-	} else {
-		fmt.Printf("Success! Response: %s\n", string(body))
+		if resp.StatusCode != 200 {
+			fmt.Printf("Error %d for %s: %s\n", resp.StatusCode, model, string(body))
+		} else {
+			fmt.Printf("SUCCESS! Response from %s: %s\n", model, string(body))
+		}
 	}
 }
