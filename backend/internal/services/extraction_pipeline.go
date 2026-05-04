@@ -6,8 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/rs/zerolog/log"
 	"receiptmind-backend/internal/config"
+
+	"github.com/rs/zerolog/log"
 )
 
 type ExtractionPipeline struct {
@@ -50,7 +51,7 @@ func (p *ExtractionPipeline) Process(ctx context.Context, data []byte, fileName 
 
 	// We focus on the first page for most receipts
 	targetImg := images[0]
-	
+
 	// 3. OCR Extraction (Free + Reliable)
 	ocrText, err := p.ocrService.ExtractText(targetImg)
 	if err != nil {
@@ -59,8 +60,12 @@ func (p *ExtractionPipeline) Process(ctx context.Context, data []byte, fileName 
 
 	// 4. AI Extraction with Fallback
 	result, err := p.aiService.ExtractWithContext(ctx, targetImg, ocrText)
-	if err != nil || result.Confidence < 0.6 {
-		log.Warn().Err(err).Float64("confidence", result.Confidence).Msg("AI low confidence or failed, retrying...")
+	if err != nil || (result != nil && result.Confidence < 0.6) {
+		if err != nil {
+			log.Warn().Err(err).Msg("AI extraction failed, retrying...")
+		} else if result != nil {
+			log.Warn().Float64("confidence", result.Confidence).Msg("AI low confidence, retrying...")
+		}
 		// Retry once with more descriptive prompt or 1.5 Pro
 		result, err = p.aiService.ExtractWithContext(ctx, targetImg, ocrText)
 	}

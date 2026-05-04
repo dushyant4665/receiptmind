@@ -74,6 +74,11 @@ Return ONLY a valid JSON object.
 Fields: vendor_name (string), amount (number), receipt_date (YYYY-MM-DD), category (string), confidence (number 0-1).
 Rules: Amount must be numeric, Date must be ISO format.`, ocrText)
 
+		mimeType := "image/jpeg"
+		if len(imageData) > 4 && string(imageData[:4]) == "%PDF" {
+			mimeType = "application/pdf"
+		}
+
 		reqBody := map[string]interface{}{
 			"contents": []map[string]interface{}{
 				{
@@ -81,7 +86,7 @@ Rules: Amount must be numeric, Date must be ISO format.`, ocrText)
 						{"text": prompt},
 						{
 							"inline_data": map[string]string{
-								"mime_type": "image/jpeg",
+								"mime_type": mimeType,
 								"data":      base64Image,
 							},
 						},
