@@ -55,8 +55,12 @@ export type ReceiptListResponse = {
 };
 
 export type ReceiptUploadResponse = {
+  id?: string;
   receipt_id: string;
   status: string;
+  file_url?: string;
+  vendor_name?: string;
+  created_at?: string;
 };
 
 export type Exception = {

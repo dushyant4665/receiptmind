@@ -21,7 +21,7 @@ func main() {
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	models := []string{"gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"}
+	models := []string{"gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"}
 
 	for _, model := range models {
 		fmt.Printf("\n--- Testing Model: %s ---\n", model)

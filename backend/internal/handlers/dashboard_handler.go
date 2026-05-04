@@ -23,11 +23,13 @@ func NewDashboardHandler(db *database.Database, redisClient *redis.Client) *Dash
 }
 
 type DashboardStats struct {
-	TotalReceipts   int     `json:"total_receipts"`
-	TotalAmount     float64 `json:"total_amount"`
-	ProcessedCount  int     `json:"processed_count"`
-	PendingCount    int     `json:"pending_count"`
-	NeedsReviewCount int    `json:"needs_review_count"`
+	TotalReceipts    int     `json:"total_receipts"`
+	TotalAmount      float64 `json:"total_amount"`
+	ProcessedCount   int     `json:"processed_count"`
+	PendingCount     int     `json:"pending_count"`
+	NeedsReviewCount int     `json:"needs_review_count"`
+	TimeSavedMinutes int     `json:"time_saved_minutes"`
+	AutomationRate   float64 `json:"automation_rate"`
 }
 
 func (h *DashboardHandler) GetStats(c *fiber.Ctx) error {
@@ -89,6 +91,15 @@ func (h *DashboardHandler) GetStats(c *fiber.Ctx) error {
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to count open exceptions")
 		return SendError(c, fiber.StatusInternalServerError, "internal server error")
+	}
+
+	stats.TimeSavedMinutes = stats.ProcessedCount * 5
+	if stats.TotalReceipts > 0 {
+		autoDone := stats.ProcessedCount - stats.NeedsReviewCount
+		if autoDone < 0 {
+			autoDone = 0
+		}
+		stats.AutomationRate = float64(autoDone) / float64(stats.TotalReceipts)
 	}
 
 	data, err := json.Marshal(stats)

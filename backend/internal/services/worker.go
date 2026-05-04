@@ -128,10 +128,11 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 	log.Debug().Str("receipt_id", receiptID).Msg("Worker: Receipt status updated to processing")
 
 	var receipt models.Receipt
+	var fileName string
 	err = w.db.Pool.QueryRow(ctx,
-		"SELECT id, organization_id, user_id, file_path FROM receipts WHERE id = $1",
+		"SELECT id, organization_id, user_id, file_path, COALESCE(file_name, '') FROM receipts WHERE id = $1",
 		receiptID,
-	).Scan(&receipt.ID, &receipt.OrganizationID, &receipt.UserID, &receipt.FilePath)
+	).Scan(&receipt.ID, &receipt.OrganizationID, &receipt.UserID, &receipt.FilePath, &fileName)
 	if err != nil {
 		log.Error().Err(err).Str("receipt_id", receiptID).Msg("Failed to fetch receipt")
 		w.handleFailure(ctx, receiptID, job, err)
@@ -147,7 +148,11 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 		return
 	}
 
-	extraction, err := w.aiService.ExtractReceiptData(ctx, fileBytes)
+	if fileName == "" {
+		fileName = receipt.FilePath
+	}
+	pipeline := NewExtractionPipeline(w.aiService.config)
+	extraction, err := pipeline.Process(ctx, fileBytes, fileName)
 	if err != nil {
 		log.Error().Err(err).Str("receipt_id", receiptID).Msg("AI extraction failed")
 		w.handleFailure(ctx, receiptID, job, err)
@@ -170,23 +175,32 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 	amount := rawAmount
 	category := rawCategory
 	confidence := rawConfidence
+	needsReview := confidence < 0.75 || vendorName == "" || amount <= 0 || extraction.ReceiptDate == ""
+	newStatus := "processed"
+	if needsReview {
+		newStatus = "needs_review"
+	}
 
 	_, err = w.db.Pool.Exec(ctx,
 		`UPDATE receipts SET
-			status = 'processed',
-			raw_vendor_name = $1,
-			raw_amount = $2,
-			raw_date = $3,
-			raw_category = $4,
-			raw_confidence = $5,
-			vendor_name = $6,
-			amount = $7,
-			receipt_date = $8,
-			category = $9,
-			confidence = $10
-		WHERE id = $11`,
+			status = $1,
+			raw_vendor_name = $2,
+			raw_amount = $3,
+			raw_date = $4,
+			raw_category = $5,
+			raw_confidence = $6,
+			vendor_name = $7,
+			amount = $8,
+			receipt_date = $9,
+			category = $10,
+			confidence = $11,
+			needs_review = $12,
+			updated_at = NOW()
+		WHERE id = $13`,
+		newStatus,
 		nullStr(rawVendor), rawAmount, parsedDate, nullStr(rawCategory), rawConfidence,
 		nullStr(vendorName), amount, parsedDate, nullStr(category), confidence,
+		needsReview,
 		receiptID,
 	)
 	if err != nil {

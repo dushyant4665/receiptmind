@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -91,8 +92,8 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 	}
 	defer fileData.Close()
 
-	data := make([]byte, file.Size)
-	if _, err := fileData.Read(data); err != nil {
+	data, err := io.ReadAll(fileData)
+	if err != nil {
 		return SendError(c, fiber.StatusInternalServerError, "failed to read file data")
 	}
 
@@ -131,9 +132,10 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 		log.Error().Err(err).Msg("Failed to insert receipt")
 		return SendError(c, fiber.StatusInternalServerError, "failed to create receipt")
 	}
+	h.invalidateCache(orgID)
 
 	// 2. Start AI processing in background using the new Pipeline
-	go func(rID, oID, fName string, imgData []byte) {
+	go func(rID, oID, fName string, imgData []byte, uID string) {
 		log.Info().Str("receipt_id", rID).Str("file_name", fName).Msg("--- BACKGROUND WORKER STARTED ---")
 
 		bgCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -166,31 +168,51 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 			}
 		}
 
-		log.Info().Str("receipt_id", rID).Msg("Updating database with extracted data...")
+		needsReview := extraction.Confidence < 0.75 || extraction.VendorName == "" || extraction.Amount <= 0 || extraction.ReceiptDate == ""
+		status := "processed"
+		if needsReview {
+			status = "needs_review"
+		}
+
+		log.Info().Str("receipt_id", rID).Bool("needs_review", needsReview).Msg("Updating database with extracted data...")
 
 		// Update DB with results
 		_, err = h.DB.Pool.Exec(bgCtx,
 			`UPDATE receipts SET 
-				status = 'processed',
-				vendor_name = $1, amount = $2, receipt_date = $3, category = $4, confidence = $5,
-				raw_vendor_name = $1, raw_amount = $2, raw_date = $3, raw_category = $4, raw_confidence = $5
-			 WHERE id = $6`,
+				status = $1,
+				vendor_name = $2, amount = $3, receipt_date = $4, category = $5, confidence = $6,
+				raw_vendor_name = $7, raw_amount = $8, raw_date = $9, raw_category = $10, raw_confidence = $11,
+				needs_review = $12,
+				updated_at = NOW()
+			 WHERE id = $13`,
+			status,
 			extraction.VendorName, extraction.Amount, parsedDate, extraction.Category, extraction.Confidence,
+			extraction.VendorName, extraction.Amount, parsedDate, extraction.Category, extraction.Confidence,
+			needsReview,
 			rID,
 		)
 		if err != nil {
 			log.Error().Err(err).Str("receipt_id", rID).Msg("!!! DB UPDATE FAILED after extraction !!!")
 		} else {
+			receipt := &models.Receipt{
+				ID:             rID,
+				OrganizationID: oID,
+				UserID:         uID,
+			}
+			if err := h.ExceptionService.CheckAndCreate(bgCtx, receipt, extraction); err != nil {
+				log.Error().Err(err).Str("receipt_id", rID).Msg("Exception check failed")
+			}
 			log.Info().Str("receipt_id", rID).Msg("--- BACKGROUND WORKER COMPLETED SUCCESSFULLY ---")
 		}
 
 		// Invalidate cache after background update
-		h.Redis.Del(bgCtx, fmt.Sprintf("receipts:%s:*", oID))
-	}(receiptID, orgID, file.Filename, data)
+		h.invalidateCache(oID)
+	}(receiptID, orgID, file.Filename, data, userID)
 
 	// Return SUCCESS immediately with the saved data
 	return c.Status(fiber.StatusCreated).JSON(SuccessResponse(fiber.Map{
 		"id":          receiptID,
+		"receipt_id":  receiptID,
 		"status":      "processing",
 		"file_url":    base64Data, // frontend expects file_url or fileUrl
 		"vendor_name": "AI Extracting...",
@@ -279,10 +301,29 @@ func (h *ReceiptHandler) ListReceipts(c *fiber.Ctx) error {
 	argIdx := 2
 
 	if search != "" {
-		query += fmt.Sprintf(" AND (vendor_name ILIKE $%d OR raw_vendor_name ILIKE $%d)", argIdx, argIdx)
-		countQuery += fmt.Sprintf(" AND (vendor_name ILIKE $%d OR raw_vendor_name ILIKE $%d)", argIdx, argIdx)
-		args = append(args, "%"+search+"%")
-		argIdx++
+		search = strings.TrimSpace(search)
+		if strings.HasPrefix(search, ">") || strings.HasPrefix(search, "<") {
+			operator := search[:1]
+			if amt, err := strconv.ParseFloat(strings.TrimSpace(search[1:]), 64); err == nil {
+				query += fmt.Sprintf(" AND amount %s $%d", operator, argIdx)
+				countQuery += fmt.Sprintf(" AND amount %s $%d", operator, argIdx)
+				args = append(args, amt)
+				argIdx++
+			}
+		} else if strings.EqualFold(search, "last month") {
+			now := time.Now()
+			start := time.Date(now.Year(), now.Month()-1, 1, 0, 0, 0, 0, now.Location())
+			end := start.AddDate(0, 1, 0)
+			query += fmt.Sprintf(" AND receipt_date >= $%d AND receipt_date < $%d", argIdx, argIdx+1)
+			countQuery += fmt.Sprintf(" AND receipt_date >= $%d AND receipt_date < $%d", argIdx, argIdx+1)
+			args = append(args, start, end)
+			argIdx += 2
+		} else {
+			query += fmt.Sprintf(" AND (vendor_name ILIKE $%d OR raw_vendor_name ILIKE $%d OR category ILIKE $%d)", argIdx, argIdx, argIdx)
+			countQuery += fmt.Sprintf(" AND (vendor_name ILIKE $%d OR raw_vendor_name ILIKE $%d OR category ILIKE $%d)", argIdx, argIdx, argIdx)
+			args = append(args, "%"+search+"%")
+			argIdx++
+		}
 	}
 
 	if status != "" {

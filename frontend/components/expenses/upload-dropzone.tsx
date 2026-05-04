@@ -10,12 +10,52 @@ import { Progress } from "@/components/ui/progress";
 import { UpgradeModal } from "@/components/billing/upgrade-modal";
 import { uploadApiData } from "@/lib/api-client";
 import { globalImageCache } from "@/lib/image-cache";
-import type { Receipt, LocalOptimisticReceipt } from "@/types";
+import type { Receipt, ReceiptListResponse, LocalOptimisticReceipt } from "@/types";
 
 type UploadResponse = {
+  id?: string;
   receipt_id: string;
   status: string;
+  file_url?: string;
+  vendor_name?: string;
+  created_at?: string;
 };
+
+function upsertReceiptIntoCache(
+  queryClient: ReturnType<typeof useQueryClient>,
+  accessToken: string,
+  receipt: Receipt,
+  optimisticIds: Set<string>,
+) {
+  queryClient.setQueriesData<ReceiptListResponse>(
+    { queryKey: ["receipts", accessToken] },
+    (current) => {
+      if (!current || !Array.isArray(current.receipts)) return current;
+      const withoutOld = current.receipts.filter((item) => {
+        const isOptimistic = "isOptimistic" in item && (item as LocalOptimisticReceipt).isOptimistic;
+        return item.id !== receipt.id && !(isOptimistic && optimisticIds.has(item.id));
+      });
+
+      return {
+        ...current,
+        receipts: [receipt, ...withoutOld],
+        total: Math.max(current.total, withoutOld.length + 1),
+      };
+    },
+  );
+
+  queryClient.setQueriesData<Receipt[]>(
+    { queryKey: ["receipts", accessToken], exact: true },
+    (current) => {
+      if (!Array.isArray(current)) return current;
+      const withoutOld = current.filter((item) => {
+        const isOptimistic = "isOptimistic" in item && (item as LocalOptimisticReceipt).isOptimistic;
+        return item.id !== receipt.id && !(isOptimistic && optimisticIds.has(item.id));
+      });
+      return [receipt, ...withoutOld];
+    },
+  );
+}
 
 export function UploadDropzone() {
   const queryClient = useQueryClient();
@@ -66,6 +106,17 @@ export function UploadDropzone() {
       isOptimistic: true,
     }));
 
+    queryClient.setQueriesData<ReceiptListResponse>(
+      { queryKey: ["receipts", session.accessToken] },
+      (current) => {
+        if (!current || !Array.isArray(current.receipts)) return current;
+        return {
+          ...current,
+          receipts: [...optimisticReceipts, ...current.receipts],
+          total: current.total + optimisticReceipts.length,
+        };
+      },
+    );
     queryClient.setQueryData<Receipt[]>(["receipts", session.accessToken], (current) => [
       ...optimisticReceipts,
       ...(current ?? []),
@@ -77,13 +128,37 @@ export function UploadDropzone() {
     });
 
     try {
-      const response = await uploadApiData<any>("/receipts/upload", formData, {
+      const response = await uploadApiData<UploadResponse>("/receipts/upload", formData, {
         authToken: session.accessToken,
       });
 
+      const receiptId = response.receipt_id || response.id;
       // Store in global cache for immediate flicker-free display
-      if (response.id && response.file_url) {
-        globalImageCache[response.id] = response.file_url;
+      if (receiptId && response.file_url) {
+        globalImageCache[receiptId] = response.file_url;
+      }
+
+      if (receiptId) {
+        const firstOptimistic = optimisticReceipts[0];
+        upsertReceiptIntoCache(
+          queryClient,
+          session.accessToken,
+          {
+            id: receiptId,
+            organizationId: "",
+            userId: "",
+            filePath: firstOptimistic?.filePath ?? "",
+            fileUrl: response.file_url ?? firstOptimistic?.fileUrl,
+            status: response.status || "processing",
+            vendorName: response.vendor_name || "AI Extracting...",
+            amount: null,
+            receiptDate: null,
+            category: "",
+            confidence: null,
+            createdAt: response.created_at || now,
+          },
+          new Set(optimisticReceipts.map((receipt) => receipt.id)),
+        );
       }
 
       clearInterval(progressInterval);
@@ -112,6 +187,16 @@ export function UploadDropzone() {
       setProgress(0);
       queryClient.setQueryData<Receipt[]>(["receipts", session.accessToken], (current) =>
         (current ?? []).filter((receipt) => !("isOptimistic" in receipt && (receipt as LocalOptimisticReceipt).isOptimistic)),
+      );
+      queryClient.setQueriesData<ReceiptListResponse>(
+        { queryKey: ["receipts", session.accessToken] },
+        (current) => {
+          if (!current || !Array.isArray(current.receipts)) return current;
+          const receipts = current.receipts.filter(
+            (receipt) => !("isOptimistic" in receipt && (receipt as LocalOptimisticReceipt).isOptimistic),
+          );
+          return { ...current, receipts, total: receipts.length };
+        },
       );
     } finally {
       setIsUploading(false);

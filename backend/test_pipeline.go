@@ -24,8 +24,11 @@ func main() {
 	// Create the pipeline
 	pipeline := services.NewExtractionPipeline(cfg)
 
-	// Use one of the existing PDF files for testing
-	testFile := `c:\Users\Lenovo\OneDrive\Desktop\bookkeeper\receiptmind-enterprise\backend\uploads\174fb376-50b3-4502-a07e-be87379c74b4\2e018081-bc2c-4e3c-99c3-7eaf7c354142.pdf`
+	// Use TEST_RECEIPT_FILE when provided, otherwise fall back to an existing sample.
+	testFile := os.Getenv("TEST_RECEIPT_FILE")
+	if testFile == "" {
+		testFile = `c:\Users\Lenovo\OneDrive\Desktop\bookkeeper\receiptmind-enterprise\backend\uploads\174fb376-50b3-4502-a07e-be87379c74b4\2e018081-bc2c-4e3c-99c3-7eaf7c354142.pdf`
+	}
 	
 	data, err := os.ReadFile(testFile)
 	if err != nil {

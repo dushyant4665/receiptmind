@@ -4,9 +4,6 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Download, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { useSession } from "next-auth/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getApiData } from "@/lib/api-client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UploadDropzone } from "@/components/expenses/upload-dropzone";
@@ -14,7 +11,7 @@ import { useReceipts, type ReceiptFilters, useDeleteReceipt } from "@/hooks/use-
 import { useCsvExport } from "@/hooks/use-csv-export";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { Receipt, ReceiptListResponse } from "@/types";
+import type { Receipt } from "@/types";
 
 // In-memory cache for newly uploaded receipts to guarantee images show up instantly
 export const globalImageCache: Record<string, string> = {};
@@ -31,7 +28,6 @@ function CSVExportButton({ status }: { status: string }) {
 }
 
 export default function ReceiptsPage() {
-  const { data: session } = useSession();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedReceiptId, setSelectedReceiptId] = useState<string | null>(null);
@@ -43,20 +39,7 @@ export default function ReceiptsPage() {
     status: statusFilter !== "all" ? statusFilter : undefined,
   }), [query, statusFilter]);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["receipts", session?.accessToken, filters],
-    queryFn: () =>
-      getApiData<ReceiptListResponse>(
-        `/receipts?${new URLSearchParams(filters as any).toString()}`,
-        { authToken: session?.accessToken ?? "" }
-      ),
-    enabled: !!session?.accessToken,
-    refetchInterval: (query) => {
-      const results = query.state.data as ReceiptListResponse;
-      const hasProcessing = results?.receipts?.some((r: any) => r.status === 'processing');
-      return hasProcessing ? 2000 : 10000;
-    },
-  });
+  const { data, isLoading } = useReceipts(50, 0, filters);
 
   const { mutate: deleteReceipt } = useDeleteReceipt();
   const receipts = data?.receipts ?? [];
@@ -265,7 +248,9 @@ export default function ReceiptsPage() {
               <p className="text-[12px] text-text-muted">Preview unavailable</p>
             )}
           </div>
-          <div className="mt-3 flex justify-end"><DialogClose><Button variant="outline" size="sm">Close</Button></DialogClose></div>
+          <div className="mt-3 flex justify-end">
+            <DialogClose render={<Button variant="outline" size="sm" />}>Close</DialogClose>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -277,7 +262,7 @@ export default function ReceiptsPage() {
                 <p className="truncate text-[13px] font-medium text-text-primary">{selectedReceipt.vendorName || "Unknown Vendor"}</p>
                 <p className="mt-0.5 text-[11px] text-text-muted">{renderStatus(selectedReceipt.status)}</p>
               </div>
-              <DialogClose><Button variant="ghost" size="sm" className="text-[11px]">Close</Button></DialogClose>
+              <DialogClose render={<Button variant="ghost" size="sm" className="text-[11px]" />}>Close</DialogClose>
             </div>
             <div className="flex-1 overflow-auto p-4 space-y-4">
               <div className="rounded-lg border border-border-default bg-bg-page p-3 flex items-center justify-center">

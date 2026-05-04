@@ -1,5 +1,13 @@
 $baseUrl = "http://localhost:8085"
 $pass = 0; $fail = 0
+$backendEnv = Join-Path $PSScriptRoot "backend\.env"
+$emailWebhookToken = ""
+if (Test-Path $backendEnv) {
+    $tokenLine = Select-String -Path $backendEnv -Pattern '^EMAIL_WEBHOOK_TOKEN=' | Select-Object -First 1
+    if ($tokenLine) {
+        $emailWebhookToken = $tokenLine.Line -replace '^EMAIL_WEBHOOK_TOKEN=', ''
+    }
+}
 
 function Test-Route($num, $name, $method, $url, $body, $headers, $expectStatus) {
     Write-Host "`n[$num] $name" -ForegroundColor Cyan
@@ -62,7 +70,8 @@ Test-Route "4.1" "Login (wrong password)" "POST" "$baseUrl/auth/login" @{ email 
 # ════════════════════════════════════════════════════
 $b64Content = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("fake pdf content"))
 $emailBody = @{ from = $testEmail; subject = "Test Receipt"; message_id = "msg-$rand@test.com"; attachments = @(@{ filename = "receipt.pdf"; content = $b64Content }) }
-Test-Route "5.1" "Email Inbound" "POST" "$baseUrl/email/inbound" $emailBody $null 201 | Out-Null
+$emailHeaders = if ($emailWebhookToken) { @{ "X-Webhook-Token" = $emailWebhookToken } } else { $null }
+Test-Route "5.1" "Email Inbound" "POST" "$baseUrl/email/inbound" $emailBody $emailHeaders 200 | Out-Null
 
 # ════════════════════════════════════════════════════
 # 6. USERS (Auth)

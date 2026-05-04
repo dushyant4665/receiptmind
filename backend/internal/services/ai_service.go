@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -58,22 +61,40 @@ func (a *AIService) ExtractReceiptData(ctx context.Context, fileBytes []byte) (*
 }
 
 func (a *AIService) ExtractWithContext(ctx context.Context, imageData []byte, ocrText string) (*ExtractionResult, error) {
+	if a.config.GeminiKey == "" {
+		if a.config.OpenAIKey == "" {
+			return nil, fmt.Errorf("no AI provider configured")
+		}
+		log.Info().Msg("Using OpenAI for extraction")
+		return a.callOpenAI(ctx, base64.StdEncoding.EncodeToString(imageData))
+	}
+
 	base64Image := base64.StdEncoding.EncodeToString(imageData)
 
-	// Try latest Gemini models confirmed from models_list.json
-	models := []string{"models/gemini-2.0-flash", "models/gemini-2.0-flash-lite", "models/gemini-flash-latest"}
+	models := []string{"models/gemini-2.5-flash", "models/gemini-2.0-flash", "models/gemini-2.0-flash-lite"}
 	var lastErr error
 
 	for _, model := range models {
 		url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/%s:generateContent?key=%s", model, a.config.GeminiKey)
 		log.Info().Str("model", model).Msg("Attempting Gemini call...")
 
-		prompt := fmt.Sprintf(`Extract structured receipt data from the provided image and OCR text.
+		prompt := fmt.Sprintf(`Extract structured receipt data from this receipt.
 OCR Text context: %s
 
-Return ONLY a valid JSON object. 
-Fields: vendor_name (string), amount (number), receipt_date (YYYY-MM-DD), category (string), confidence (number 0-1).
-Rules: Amount must be numeric, Date must be ISO format.`, ocrText)
+Return ONLY one JSON object with these exact keys:
+{
+  "vendor_name": "merchant/store name, empty string if unknown",
+  "amount": 0.00,
+  "receipt_date": "YYYY-MM-DD or empty string",
+  "category": "Food | Travel | Office | Utilities | Entertainment | Healthcare | General",
+  "confidence": 0.0
+}
+
+Rules:
+- Extract the final total paid, not subtotal, tax, balance, cashback, or item price.
+- Convert dates to ISO YYYY-MM-DD when possible.
+- Do not invent missing values; lower confidence instead.
+- Use confidence below 0.75 if any key field is uncertain.`, ocrText)
 
 		mimeType := "image/jpeg"
 		if len(imageData) > 4 && string(imageData[:4]) == "%PDF" {
@@ -109,9 +130,9 @@ Rules: Amount must be numeric, Date must be ISO format.`, ocrText)
 			lastErr = err
 			continue
 		}
-		defer resp.Body.Close()
 
 		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if resp.StatusCode != 200 {
 			lastErr = fmt.Errorf("gemini %s error %d: %s", model, resp.StatusCode, string(body))
 			continue
@@ -138,15 +159,21 @@ Rules: Amount must be numeric, Date must be ISO format.`, ocrText)
 		}
 
 		contentText := geminiResp.Candidates[0].Content.Parts[0].Text
-		var result ExtractionResult
-		if err := json.Unmarshal([]byte(contentText), &result); err != nil {
+		result, err := parseExtractionJSON(contentText)
+		if err != nil {
 			log.Error().Err(err).Str("content", contentText).Msg("Failed to unmarshal AI response")
 			lastErr = err
 			continue
 		}
 
+		normalizeExtraction(result)
 		log.Info().Str("model", model).Msg("AI extraction successful")
-		return &result, nil
+		return result, nil
+	}
+
+	if a.config.OpenAIKey != "" {
+		log.Warn().Err(lastErr).Msg("Gemini extraction failed, falling back to OpenAI")
+		return a.callOpenAI(ctx, base64Image)
 	}
 
 	return nil, fmt.Errorf("all gemini models failed: %w", lastErr)
@@ -238,11 +265,12 @@ If a field cannot be determined, use null for strings, 0 for amount, and 0.0 for
 		return nil, fmt.Errorf("no choices in openai response")
 	}
 
-	var result ExtractionResult
 	content := chatResp.Choices[0].Message.Content
-	if err := json.Unmarshal([]byte(content), &result); err != nil {
+	result, err := parseExtractionJSON(content)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse extraction result: %w (content: %s)", err, content)
 	}
+	normalizeExtraction(result)
 
 	log.Info().
 		Str("vendor", result.VendorName).
@@ -250,5 +278,78 @@ If a field cannot be determined, use null for strings, 0 for amount, and 0.0 for
 		Float64("confidence", result.Confidence).
 		Msg("AI extraction complete")
 
-	return &result, nil
+	return result, nil
+}
+
+func parseExtractionJSON(content string) (*ExtractionResult, error) {
+	clean := strings.TrimSpace(content)
+	clean = strings.TrimPrefix(clean, "```json")
+	clean = strings.TrimPrefix(clean, "```")
+	clean = strings.TrimSuffix(clean, "```")
+	clean = strings.TrimSpace(clean)
+
+	if !strings.HasPrefix(clean, "{") {
+		re := regexp.MustCompile(`(?s)\{.*\}`)
+		if match := re.FindString(clean); match != "" {
+			clean = match
+		}
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal([]byte(clean), &raw); err != nil {
+		return nil, err
+	}
+
+	return &ExtractionResult{
+		VendorName:  stringValue(raw["vendor_name"]),
+		Amount:      numberValue(raw["amount"]),
+		ReceiptDate: stringValue(raw["receipt_date"]),
+		Category:    stringValue(raw["category"]),
+		Confidence:  numberValue(raw["confidence"]),
+	}, nil
+}
+
+func normalizeExtraction(result *ExtractionResult) {
+	result.VendorName = strings.TrimSpace(result.VendorName)
+	result.ReceiptDate = strings.TrimSpace(result.ReceiptDate)
+	result.Category = strings.TrimSpace(result.Category)
+	if result.Category == "" {
+		result.Category = "General"
+	}
+	if result.Confidence < 0 {
+		result.Confidence = 0
+	}
+	if result.Confidence > 1 {
+		result.Confidence = 1
+	}
+	if result.Confidence == 0 && result.VendorName != "" && result.Amount > 0 {
+		result.Confidence = 0.65
+	}
+}
+
+func stringValue(v interface{}) string {
+	switch val := v.(type) {
+	case string:
+		return val
+	case nil:
+		return ""
+	default:
+		return fmt.Sprint(val)
+	}
+}
+
+func numberValue(v interface{}) float64 {
+	switch val := v.(type) {
+	case float64:
+		return val
+	case int:
+		return float64(val)
+	case string:
+		clean := strings.ReplaceAll(val, ",", "")
+		clean = strings.TrimSpace(strings.TrimPrefix(clean, "$"))
+		f, _ := strconv.ParseFloat(clean, 64)
+		return f
+	default:
+		return 0
+	}
 }

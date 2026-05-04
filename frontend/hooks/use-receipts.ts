@@ -11,6 +11,8 @@ type BackendReceipt = {
   organization_id: string;
   user_id: string;
   file_path: string;
+  file_url?: string | null;
+  file_name?: string | null;
   status: string;
   raw_vendor_name?: string | null;
   raw_amount?: number | null;
@@ -62,7 +64,7 @@ function mapReceipt(r: BackendReceipt): Receipt {
     category: r.category,
     confidence: r.confidence,
     createdAt: r.created_at,
-    fileUrl: r.file_path,
+    fileUrl: r.file_url ?? r.file_path,
     exceptions: r.exceptions?.map(mapException),
   };
 }

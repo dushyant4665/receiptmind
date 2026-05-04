@@ -136,6 +136,7 @@ func (h *EmailHandler) Inbound(c *fiber.Ctx) error {
 			log.Error().Err(err).Msg("Failed to insert receipt from email")
 			continue
 		}
+		h.invalidateCache(ctx, orgID)
 
 		err = h.QueueService.Enqueue(ctx, "process_receipt", map[string]interface{}{
 			"receipt_id": receiptID,
@@ -179,4 +180,12 @@ func (h *EmailHandler) Inbox(c *fiber.Ctx) error {
 	return c.JSON(SuccessResponse(fiber.Map{
 		"email": inboxEmail,
 	}))
+}
+
+func (h *EmailHandler) invalidateCache(ctx context.Context, orgID string) {
+	h.Redis.Del(ctx, fmt.Sprintf("dashboard:%s", orgID))
+	iter := h.Redis.Scan(ctx, 0, fmt.Sprintf("receipts:%s:*", orgID), 100).Iterator()
+	for iter.Next(ctx) {
+		h.Redis.Del(ctx, iter.Val())
+	}
 }
