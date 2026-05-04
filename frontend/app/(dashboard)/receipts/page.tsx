@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Download, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useSession } from "next-auth/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getApiData } from "@/lib/api-client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UploadDropzone } from "@/components/expenses/upload-dropzone";
@@ -11,7 +14,7 @@ import { useReceipts, type ReceiptFilters, useDeleteReceipt } from "@/hooks/use-
 import { useCsvExport } from "@/hooks/use-csv-export";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { Receipt } from "@/types";
+import type { Receipt, ReceiptListResponse } from "@/types";
 
 // In-memory cache for newly uploaded receipts to guarantee images show up instantly
 export const globalImageCache: Record<string, string> = {};
@@ -28,6 +31,7 @@ function CSVExportButton({ status }: { status: string }) {
 }
 
 export default function ReceiptsPage() {
+  const { data: session } = useSession();
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedReceiptId, setSelectedReceiptId] = useState<string | null>(null);
@@ -39,9 +43,22 @@ export default function ReceiptsPage() {
     status: statusFilter !== "all" ? statusFilter : undefined,
   }), [query, statusFilter]);
 
-  const { data, isLoading } = useReceipts(50, 0, filters);
-  const { mutate: deleteReceipt } = useDeleteReceipt();
+  const { data, isLoading } = useQuery({
+    queryKey: ["receipts", session?.accessToken, filters],
+    queryFn: () =>
+      getApiData<ReceiptListResponse>(
+        `/receipts?${new URLSearchParams(filters as any).toString()}`,
+        { authToken: session?.accessToken ?? "" }
+      ),
+    enabled: !!session?.accessToken,
+    refetchInterval: (query) => {
+      const results = query.state.data as ReceiptListResponse;
+      const hasProcessing = results?.receipts?.some((r: any) => r.status === 'processing');
+      return hasProcessing ? 2000 : 10000;
+    },
+  });
 
+  const { mutate: deleteReceipt } = useDeleteReceipt();
   const receipts = data?.receipts ?? [];
   const totalFromServer = data?.total ?? 0;
 

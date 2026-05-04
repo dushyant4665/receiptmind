@@ -224,16 +224,17 @@ func (h *ReceiptHandler) GetReceipt(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusInternalServerError, "internal server error")
 	}
 
-	signedURL, err := h.StorageService.GetSignedURL(receipt.FilePath)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to generate signed URL")
-		signedURL = ""
-	}
-
 	exceptions, _ := h.ExceptionService.GetByReceiptID(ctx, receiptID, orgID)
-
 	resp := h.mapReceipt(receipt)
-	resp["file_url"] = signedURL
+	// Always prefer the stored file_url (Base64) for preview reliability on Render
+	if receipt.FileURL != "" {
+		resp["file_url"] = receipt.FileURL
+	} else {
+		signedURL, err := h.StorageService.GetSignedURL(receipt.FilePath)
+		if err == nil {
+			resp["file_url"] = signedURL
+		}
+	}
 	resp["exceptions"] = exceptions
 
 	return c.JSON(SuccessResponse(resp))
