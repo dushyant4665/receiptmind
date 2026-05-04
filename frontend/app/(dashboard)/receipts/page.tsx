@@ -182,7 +182,12 @@ export default function ReceiptsPage() {
                         className="block size-8 overflow-hidden rounded-md border border-border-default bg-bg-page flex items-center justify-center"
                       >
                         {row.fileUrl ? (
-                          <img src={row.fileUrl} alt={row.vendorName ?? "Receipt"} className="h-full w-full object-cover" loading="lazy" />
+                          <img 
+                            src={row.fileUrl.startsWith('data:') ? row.fileUrl : `${process.env.NEXT_PUBLIC_API_URL}${row.fileUrl}`} 
+                            alt={row.vendorName ?? "Receipt"} 
+                            className="h-full w-full object-cover" 
+                            loading="lazy" 
+                          />
                         ) : (
                           <div className="text-[8px] text-text-muted">No Image</div>
                         )}
@@ -225,7 +230,11 @@ export default function ReceiptsPage() {
           <DialogHeader><DialogTitle className="text-[14px]">Receipt preview</DialogTitle></DialogHeader>
           <div className="mt-2 rounded-lg border border-border-default bg-bg-page p-4 flex items-center justify-center">
             {previewReceipt?.fileUrl ? (
-              <img src={previewReceipt.fileUrl} alt={previewReceipt.vendorName ?? "Receipt"} className="max-h-[60vh] w-auto object-contain" />
+              <img 
+                src={previewReceipt.fileUrl.startsWith('data:') ? previewReceipt.fileUrl : `${process.env.NEXT_PUBLIC_API_URL}${previewReceipt.fileUrl}`} 
+                alt={previewReceipt.vendorName ?? "Receipt"} 
+                className="max-h-[60vh] w-auto object-contain" 
+              />
             ) : (
               <p className="text-[12px] text-text-muted">Preview unavailable</p>
             )}
@@ -247,7 +256,11 @@ export default function ReceiptsPage() {
             <div className="flex-1 overflow-auto p-4 space-y-4">
               <div className="rounded-lg border border-border-default bg-bg-page p-3 flex items-center justify-center">
                 {selectedReceipt.fileUrl ? (
-                  <img src={selectedReceipt.fileUrl} alt={selectedReceipt.vendorName ?? "Receipt"} className="max-h-[220px] w-auto object-contain" />
+                  <img 
+                    src={selectedReceipt.fileUrl.startsWith('data:') ? selectedReceipt.fileUrl : `${process.env.NEXT_PUBLIC_API_URL}${selectedReceipt.fileUrl}`} 
+                    alt={selectedReceipt.vendorName ?? "Receipt"} 
+                    className="max-h-[220px] w-auto object-contain" 
+                  />
                 ) : (
                   <p className="text-[12px] text-text-muted">Preview unavailable</p>
                 )}
