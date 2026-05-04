@@ -247,7 +247,7 @@ export default function ReceiptsPage() {
             )}
           </div>
           <div className="mt-3 flex justify-end">
-            <DialogClose asChild><Button variant="outline" size="sm">Close</Button></DialogClose>
+            <DialogClose render={<Button variant="outline" size="sm" />}>Close</DialogClose>
           </div>
         </DialogContent>
       </Dialog>
@@ -260,7 +260,7 @@ export default function ReceiptsPage() {
                 <p className="truncate text-[13px] font-medium text-text-primary">{selectedReceipt.vendorName || "Unknown Vendor"}</p>
                 <p className="mt-0.5 text-[11px] text-text-muted">{renderStatus(selectedReceipt.status)}</p>
               </div>
-              <DialogClose asChild><Button variant="ghost" size="sm" className="text-[11px]">Close</Button></DialogClose>
+              <DialogClose render={<Button variant="ghost" size="sm" className="text-[11px]" />}>Close</DialogClose>
             </div>
             <div className="flex-1 overflow-auto p-4 space-y-4">
               <div className="rounded-lg border border-border-default bg-bg-page p-3 flex items-center justify-center">

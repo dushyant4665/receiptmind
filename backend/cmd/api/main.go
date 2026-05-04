@@ -50,7 +50,8 @@ func main() {
 	exceptionService := services.NewExceptionService(db)
 	ruleService := services.NewRuleService(db)
 	storageService := services.NewStorageService(cfg)
-	worker := services.NewWorker(queueService, db, aiService, exceptionService, ruleService, storageService, redis.Client, cfg.WorkerConcurrency)
+	sheetsService := services.NewGoogleSheetsService(cfg)
+	worker := services.NewWorker(queueService, db, aiService, exceptionService, ruleService, storageService, sheetsService, redis.Client, cfg.WorkerConcurrency)
 
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	defer workerCancel()

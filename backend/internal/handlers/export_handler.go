@@ -3,9 +3,8 @@ package handlers
 import (
 	"bufio"
 	"context"
+	"encoding/csv"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -30,7 +29,14 @@ func (h *ExportHandler) ExportCSV(c *fiber.Ctx) error {
 
 	ctx := context.Background()
 
-	query := `SELECT vendor_name, amount, category, receipt_date, status
+	query := `SELECT
+				id,
+				COALESCE(NULLIF(vendor_name, ''), NULLIF(raw_vendor_name, ''), 'Unknown') AS export_vendor,
+				COALESCE(amount, raw_amount, 0) AS export_amount,
+				COALESCE(NULLIF(category, ''), NULLIF(raw_category, ''), 'Uncategorized') AS export_category,
+				COALESCE(receipt_date, raw_date, created_at) AS export_date,
+				COALESCE(confidence, raw_confidence, 0) AS export_confidence,
+				status
 			  FROM receipts WHERE organization_id = $1`
 	args := []interface{}{orgID}
 	argIdx := 2
@@ -59,7 +65,7 @@ func (h *ExportHandler) ExportCSV(c *fiber.Ctx) error {
 		argIdx++
 	}
 
-	query += " ORDER BY receipt_date DESC"
+	query += " ORDER BY COALESCE(receipt_date, raw_date, created_at) DESC"
 
 	rows, err := h.DB.Pool.Query(ctx, query, args...)
 	if err != nil {
@@ -75,51 +81,35 @@ func (h *ExportHandler) ExportCSV(c *fiber.Ctx) error {
 
 	// Stream the CSV response
 	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
-		w.WriteString("Vendor,Amount,Category,Date,Status\n")
-		w.Flush()
+		csvWriter := csv.NewWriter(w)
+		_ = csvWriter.Write([]string{"Receipt ID", "Vendor", "Amount", "Category", "Date", "Confidence", "Status"})
 
 		for rows.Next() {
-			var vendor *string
-			var amount *float64
-			var category *string
-			var date *time.Time
+			var id string
+			var vendor string
+			var amount float64
+			var category string
+			var date time.Time
+			var confidence float64
 			var status string
 
-			if err := rows.Scan(&vendor, &amount, &category, &date, &status); err != nil {
+			if err := rows.Scan(&id, &vendor, &amount, &category, &date, &confidence, &status); err != nil {
+				log.Error().Err(err).Msg("Failed to scan receipt for CSV export")
 				continue
 			}
 
-			vendorStr := ""
-			if vendor != nil {
-				vendorStr = *vendor
-			}
-
-			amountStr := ""
-			if amount != nil {
-				amountStr = strconv.FormatFloat(*amount, 'f', 2, 64)
-			}
-
-			categoryStr := ""
-			if category != nil {
-				categoryStr = *category
-			}
-
-			dateStr := ""
-			if date != nil {
-				dateStr = date.Format("2006-01-02")
-			}
-
-			// Escape commas in fields
-			if strings.Contains(vendorStr, ",") {
-				vendorStr = fmt.Sprintf(`"%s"`, vendorStr)
-			}
-			if strings.Contains(categoryStr, ",") {
-				categoryStr = fmt.Sprintf(`"%s"`, categoryStr)
-			}
-
-			w.WriteString(fmt.Sprintf("%s,%s,%s,%s,%s\n", vendorStr, amountStr, categoryStr, dateStr, status))
-			w.Flush()
+			_ = csvWriter.Write([]string{
+				id,
+				vendor,
+				fmt.Sprintf("%.2f", amount),
+				category,
+				date.Format("2006-01-02"),
+				fmt.Sprintf("%.2f", confidence),
+				status,
+			})
 		}
+		csvWriter.Flush()
+		w.Flush()
 	})
 
 	return nil

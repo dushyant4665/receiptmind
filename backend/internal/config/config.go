@@ -11,23 +11,26 @@ import (
 )
 
 type Config struct {
-	Port              string
-	DatabaseURL       string
-	RedisURL          string
-	JWTSecret         string
-	Environment       string
-	SupabaseURL       string
-	SupabaseKey       string
-	SupabaseBucket    string
-	MaxFileSize       int64
-	OpenAIKey         string
-	OpenAIModel       string
-	GeminiKey         string
-	WorkerConcurrency int
-	RequestTimeout    time.Duration
-	SentryDSN         string
-	EmailWebhookToken string
-	FreeReceiptLimit  int
+	Port                      string
+	DatabaseURL               string
+	RedisURL                  string
+	JWTSecret                 string
+	Environment               string
+	SupabaseURL               string
+	SupabaseKey               string
+	SupabaseBucket            string
+	MaxFileSize               int64
+	OpenAIKey                 string
+	OpenAIModel               string
+	GeminiKey                 string
+	WorkerConcurrency         int
+	RequestTimeout            time.Duration
+	SentryDSN                 string
+	EmailWebhookToken         string
+	FreeReceiptLimit          int
+	GoogleSheetsEnabled       bool
+	GoogleSheetsSpreadsheetID string
+	GoogleSheetsAccessToken   string
 }
 
 func Load() *Config {
@@ -39,23 +42,26 @@ func Load() *Config {
 	}
 
 	cfg := &Config{
-		Port:              getEnv("PORT", "8080"),
-		DatabaseURL:       getEnv("DATABASE_URL", ""),
-		RedisURL:          getEnv("REDIS_URL", "redis://localhost:6379"),
-		JWTSecret:         getEnv("JWT_SECRET", ""),
-		Environment:       getEnv("ENVIRONMENT", "development"),
-		SupabaseURL:       getEnv("SUPABASE_URL", ""),
-		SupabaseKey:       getEnv("SUPABASE_KEY", getEnv("SUPABASE_SERVICE_ROLE_KEY", "")),
-		SupabaseBucket:    getEnv("SUPABASE_BUCKET", getEnv("SUPABASE_STORAGE_BUCKET", "receipts")),
-		MaxFileSize:       getEnvInt64("MAX_FILE_SIZE", 10*1024*1024),
-		OpenAIKey:         getEnv("OPENAI_KEY", getEnv("OPENAI_API_KEY", "")),
-		OpenAIModel:       getEnv("OPENAI_MODEL", getEnv("OPEN_MODEL", "gpt-4o")),
-		GeminiKey:         getEnv("GEMINI_API_KEY", ""),
-		WorkerConcurrency: getEnvInt("WORKER_CONCURRENCY", 5),
-		RequestTimeout:    time.Duration(getEnvInt("REQUEST_TIMEOUT_SECONDS", 10)) * time.Second,
-		SentryDSN:         getEnv("SENTRY_DSN", ""),
-		EmailWebhookToken: getEnv("EMAIL_WEBHOOK_TOKEN", ""),
-		FreeReceiptLimit:  getEnvInt("FREE_RECEIPT_LIMIT", 50),
+		Port:                      getEnv("PORT", "8080"),
+		DatabaseURL:               getEnv("DATABASE_URL", ""),
+		RedisURL:                  getEnv("REDIS_URL", "redis://localhost:6379"),
+		JWTSecret:                 getEnv("JWT_SECRET", ""),
+		Environment:               getEnv("ENVIRONMENT", "development"),
+		SupabaseURL:               getEnv("SUPABASE_URL", ""),
+		SupabaseKey:               getEnv("SUPABASE_KEY", getEnv("SUPABASE_SERVICE_ROLE_KEY", "")),
+		SupabaseBucket:            getEnv("SUPABASE_BUCKET", getEnv("SUPABASE_STORAGE_BUCKET", "receipts")),
+		MaxFileSize:               getEnvInt64("MAX_FILE_SIZE", 10*1024*1024),
+		OpenAIKey:                 getEnv("OPENAI_KEY", getEnv("OPENAI_API_KEY", "")),
+		OpenAIModel:               getEnv("OPENAI_MODEL", getEnv("OPEN_MODEL", "gpt-4o")),
+		GeminiKey:                 getEnv("GEMINI_API_KEY", ""),
+		WorkerConcurrency:         getEnvInt("WORKER_CONCURRENCY", 5),
+		RequestTimeout:            time.Duration(getEnvInt("REQUEST_TIMEOUT_SECONDS", 10)) * time.Second,
+		SentryDSN:                 getEnv("SENTRY_DSN", ""),
+		EmailWebhookToken:         getEnv("EMAIL_WEBHOOK_TOKEN", ""),
+		FreeReceiptLimit:          getEnvInt("FREE_RECEIPT_LIMIT", 50),
+		GoogleSheetsEnabled:       getEnv("GOOGLE_SHEETS_ENABLED", "false") == "true",
+		GoogleSheetsSpreadsheetID: getEnv("GOOGLE_SHEETS_SPREADSHEET_ID", ""),
+		GoogleSheetsAccessToken:   getEnv("GOOGLE_SHEETS_ACCESS_TOKEN", ""),
 	}
 
 	if cfg.GeminiKey != "" {

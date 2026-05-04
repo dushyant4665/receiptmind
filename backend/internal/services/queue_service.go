@@ -6,19 +6,27 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 )
 
 const (
-	queueKey      = "receiptmind:jobs"
-	deadLetterKey = "receiptmind:dead_jobs"
+	queueKey          = "receiptmind:jobs"
+	delayedQueueKey   = "receiptmind:jobs:delayed"
+	deadLetterKey     = "receiptmind:dead_jobs"
+	idempotencyPrefix = "receiptmind:job:idempotency:"
 )
 
 type QueueJob struct {
-	Type     string                 `json:"type"`
-	Payload  map[string]interface{} `json:"payload"`
-	Attempts int                    `json:"attempts"`
+	ID             string                 `json:"id"`
+	Type           string                 `json:"type"`
+	Payload        map[string]interface{} `json:"payload"`
+	Attempts       int                    `json:"attempts"`
+	MaxAttempts    int                    `json:"max_attempts"`
+	IdempotencyKey string                 `json:"idempotency_key,omitempty"`
+	CreatedAt      time.Time              `json:"created_at"`
+	LastError      string                 `json:"last_error,omitempty"`
 }
 
 type QueueService struct {
@@ -31,9 +39,39 @@ func NewQueueService(redisClient *redis.Client) *QueueService {
 
 func (q *QueueService) Enqueue(ctx context.Context, jobType string, payload map[string]interface{}) error {
 	job := QueueJob{
-		Type:     jobType,
-		Payload:  payload,
-		Attempts: 0,
+		ID:          uuid.NewString(),
+		Type:        jobType,
+		Payload:     payload,
+		Attempts:    0,
+		MaxAttempts: 3,
+		CreatedAt:   time.Now().UTC(),
+	}
+	if idempotencyKey, ok := payload["idempotency_key"].(string); ok {
+		job.IdempotencyKey = idempotencyKey
+	}
+	return q.EnqueueJob(ctx, &job)
+}
+
+func (q *QueueService) EnqueueJob(ctx context.Context, job *QueueJob) error {
+	if job.ID == "" {
+		job.ID = uuid.NewString()
+	}
+	if job.MaxAttempts == 0 {
+		job.MaxAttempts = 3
+	}
+	if job.CreatedAt.IsZero() {
+		job.CreatedAt = time.Now().UTC()
+	}
+
+	if job.IdempotencyKey != "" {
+		ok, err := q.client.SetNX(ctx, idempotencyPrefix+job.IdempotencyKey, job.ID, 24*time.Hour).Result()
+		if err != nil {
+			return fmt.Errorf("failed to set job idempotency key: %w", err)
+		}
+		if !ok {
+			log.Info().Str("type", job.Type).Str("idempotency_key", job.IdempotencyKey).Msg("Duplicate job skipped")
+			return nil
+		}
 	}
 
 	data, err := json.Marshal(job)
@@ -45,7 +83,7 @@ func (q *QueueService) Enqueue(ctx context.Context, jobType string, payload map[
 	for attempt := 1; attempt <= 3; attempt++ {
 		lastErr = q.client.LPush(ctx, queueKey, data).Err()
 		if lastErr == nil {
-			log.Info().Str("type", jobType).Msg("Job enqueued")
+			log.Info().Str("job_id", job.ID).Str("type", job.Type).Msg("Job enqueued")
 			return nil
 		}
 		log.Warn().Err(lastErr).Int("attempt", attempt).Msg("Enqueue failed, retrying")
@@ -55,8 +93,21 @@ func (q *QueueService) Enqueue(ctx context.Context, jobType string, payload map[
 	return fmt.Errorf("failed to enqueue job after 3 attempts: %w", lastErr)
 }
 
+func (q *QueueService) EnqueueDelayed(ctx context.Context, job *QueueJob, delay time.Duration) error {
+	runAt := time.Now().Add(delay).UnixMilli()
+	data, err := json.Marshal(job)
+	if err != nil {
+		return fmt.Errorf("failed to marshal delayed job: %w", err)
+	}
+	if err := q.client.ZAdd(ctx, delayedQueueKey, redis.Z{Score: float64(runAt), Member: data}).Err(); err != nil {
+		return fmt.Errorf("failed to enqueue delayed job: %w", err)
+	}
+	log.Warn().Str("job_id", job.ID).Dur("delay", delay).Int("attempts", job.Attempts).Msg("Job scheduled for retry")
+	return nil
+}
+
 func (q *QueueService) EnqueueDeadLetter(ctx context.Context, job *QueueJob, reason string) {
-	job.Attempts++
+	job.LastError = reason
 	data, err := json.Marshal(job)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to marshal dead-letter job")
@@ -77,7 +128,11 @@ func (q *QueueService) EnqueueDeadLetter(ctx context.Context, job *QueueJob, rea
 }
 
 func (q *QueueService) Dequeue(ctx context.Context) (*QueueJob, error) {
-	result, err := q.client.BRPop(ctx, 0, queueKey).Result()
+	if err := q.promoteDueJobs(ctx); err != nil {
+		log.Warn().Err(err).Msg("Failed to promote delayed jobs")
+	}
+
+	result, err := q.client.BRPop(ctx, 5*time.Second, queueKey).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to pop job from queue: %w", err)
 	}
@@ -94,10 +149,36 @@ func (q *QueueService) Dequeue(ctx context.Context) (*QueueJob, error) {
 	return &job, nil
 }
 
+func (q *QueueService) promoteDueJobs(ctx context.Context) error {
+	now := time.Now().UnixMilli()
+	items, err := q.client.ZRangeByScore(ctx, delayedQueueKey, &redis.ZRangeBy{
+		Min:   "0",
+		Max:   fmt.Sprintf("%d", now),
+		Count: 100,
+	}).Result()
+	if err != nil || len(items) == 0 {
+		return err
+	}
+
+	for _, item := range items {
+		pipe := q.client.TxPipeline()
+		pipe.ZRem(ctx, delayedQueueKey, item)
+		pipe.LPush(ctx, queueKey, item)
+		if _, err := pipe.Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (q *QueueService) QueueSize(ctx context.Context) (int64, error) {
 	return q.client.LLen(ctx, queueKey).Result()
 }
 
 func (q *QueueService) DeadLetterSize(ctx context.Context) (int64, error) {
 	return q.client.LLen(ctx, deadLetterKey).Result()
+}
+
+func (q *QueueService) DelayedQueueSize(ctx context.Context) (int64, error) {
+	return q.client.ZCard(ctx, delayedQueueKey).Result()
 }

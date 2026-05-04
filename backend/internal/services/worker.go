@@ -23,13 +23,19 @@ type Worker struct {
 	exceptionService *ExceptionService
 	ruleService      *RuleService
 	storageService   *StorageService
+	sheetsService    *GoogleSheetsService
 	redis            *redis.Client
 	concurrency      int
+	aiLimiter        chan struct{}
 }
 
-func NewWorker(queue *QueueService, db *database.Database, aiSvc *AIService, exceptionSvc *ExceptionService, ruleSvc *RuleService, storageSvc *StorageService, redisClient *redis.Client, concurrency int) *Worker {
+func NewWorker(queue *QueueService, db *database.Database, aiSvc *AIService, exceptionSvc *ExceptionService, ruleSvc *RuleService, storageSvc *StorageService, sheetsSvc *GoogleSheetsService, redisClient *redis.Client, concurrency int) *Worker {
 	if concurrency < 1 {
 		concurrency = 5
+	}
+	aiConcurrency := concurrency
+	if aiConcurrency > 5 {
+		aiConcurrency = 5
 	}
 	return &Worker{
 		queue:            queue,
@@ -38,8 +44,10 @@ func NewWorker(queue *QueueService, db *database.Database, aiSvc *AIService, exc
 		exceptionService: exceptionSvc,
 		ruleService:      ruleSvc,
 		storageService:   storageSvc,
+		sheetsService:    sheetsSvc,
 		redis:            redisClient,
 		concurrency:      concurrency,
+		aiLimiter:        make(chan struct{}, aiConcurrency),
 	}
 }
 
@@ -64,7 +72,10 @@ func (w *Worker) Start(ctx context.Context) {
 				wg.Wait()
 				return
 			}
-			log.Error().Err(err).Msg("Failed to dequeue job")
+			if err == redis.Nil {
+				continue
+			}
+			log.Warn().Err(err).Msg("Failed to dequeue job")
 			continue
 		}
 
@@ -77,7 +88,8 @@ func (w *Worker) Start(ctx context.Context) {
 				wg.Done()
 			}()
 
-			log.Info().Str("type", j.Type).Int("attempt", j.Attempts).Msg("Processing job")
+			start := time.Now()
+			log.Info().Str("job_id", j.ID).Str("type", j.Type).Int("attempt", j.Attempts).Msg("Processing job")
 
 			switch j.Type {
 			case "process_receipt":
@@ -90,6 +102,7 @@ func (w *Worker) Start(ctx context.Context) {
 			default:
 				log.Warn().Str("type", j.Type).Msg("Unknown job type")
 			}
+			log.Info().Str("job_id", j.ID).Dur("duration", time.Since(start)).Msg("Job finished")
 		}(job)
 	}
 }
@@ -151,8 +164,10 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 	if fileName == "" {
 		fileName = receipt.FilePath
 	}
+	w.aiLimiter <- struct{}{}
 	pipeline := NewExtractionPipeline(w.aiService.config)
 	extraction, err := pipeline.Process(ctx, fileBytes, fileName)
+	<-w.aiLimiter
 	if err != nil {
 		log.Error().Err(err).Str("receipt_id", receiptID).Msg("AI extraction failed")
 		w.handleFailure(ctx, receiptID, job, err)
@@ -215,6 +230,22 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 		log.Error().Err(err).Str("receipt_id", receiptID).Msg("Exception check failed")
 	}
 
+	if w.sheetsService != nil && newStatus == "processed" {
+		date := extraction.ReceiptDate
+		if date == "" && parsedDate != nil {
+			date = parsedDate.Format("2006-01-02")
+		}
+		if err := w.sheetsService.SyncReceipt(ctx, SheetRow{
+			Date:     date,
+			Vendor:   vendorName,
+			Amount:   amount,
+			Category: category,
+			Status:   newStatus,
+		}); err != nil {
+			log.Error().Err(err).Str("receipt_id", receiptID).Msg("Google Sheets sync failed")
+		}
+	}
+
 	// Invalidate caches for this org
 	if w.redis != nil {
 		w.redis.Del(ctx, fmt.Sprintf("dashboard:%s", receipt.OrganizationID))
@@ -234,7 +265,12 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 
 func (w *Worker) handleFailure(ctx context.Context, receiptID string, job *QueueJob, err error) {
 	job.Attempts++
-	if job.Attempts >= maxRetries {
+	job.LastError = err.Error()
+	limit := job.MaxAttempts
+	if limit == 0 {
+		limit = maxRetries
+	}
+	if job.Attempts >= limit {
 		w.markFailed(ctx, receiptID)
 		w.queue.EnqueueDeadLetter(ctx, job, err.Error())
 		return
@@ -247,15 +283,7 @@ func (w *Worker) handleFailure(ctx context.Context, receiptID string, job *Queue
 		Dur("backoff", backoff).
 		Msg("Job failed, re-enqueuing with backoff")
 
-	time.Sleep(backoff)
-
-	receiptIDStr, ok := job.Payload["receipt_id"].(string)
-	if !ok {
-		return
-	}
-	_ = w.queue.Enqueue(ctx, "process_receipt", map[string]interface{}{
-		"receipt_id": receiptIDStr,
-	})
+	_ = w.queue.EnqueueDelayed(ctx, job, backoff)
 }
 
 func (w *Worker) markFailed(ctx context.Context, receiptID string) {

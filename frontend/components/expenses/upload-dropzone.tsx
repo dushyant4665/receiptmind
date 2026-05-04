@@ -133,7 +133,7 @@ export function UploadDropzone() {
         const formData = new FormData();
         formData.append("file", file);
 
-        const response = await uploadApiData<UploadResponse>("/receipts/upload", formData, {
+        const response: UploadResponse = await uploadApiData<UploadResponse>("/receipts/upload", formData, {
           authToken: session.accessToken,
         });
 

@@ -39,6 +39,7 @@ func (m *MetricsHandler) GetMetrics(c *fiber.Ctx) error {
 	errors := atomic.LoadInt64(&m.Errors)
 
 	queueSize, _ := m.Redis.LLen(ctx, "receiptmind:jobs").Result()
+	delayedQueueSize, _ := m.Redis.ZCard(ctx, "receiptmind:jobs:delayed").Result()
 	deadLetterSize, _ := m.Redis.LLen(ctx, "receiptmind:dead_jobs").Result()
 
 	errorRate := float64(0)
@@ -51,6 +52,7 @@ func (m *MetricsHandler) GetMetrics(c *fiber.Ctx) error {
 		"error_count":        errors,
 		"error_rate_percent": errorRate,
 		"job_queue_size":     queueSize,
+		"delayed_queue_size": delayedQueueSize,
 		"dead_letter_size":   deadLetterSize,
 	}))
 }

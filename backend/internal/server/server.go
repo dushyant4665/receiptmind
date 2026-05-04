@@ -96,6 +96,7 @@ func (s *Server) setupRoutes() {
 
 	email := s.App.Group("/email")
 	email.Post("/inbound", emailHandler.Inbound)
+	email.Post("/webhook", emailHandler.Inbound)
 
 	users := s.App.Group("/users", middleware.AuthProtected(s.JWTService))
 	users.Get("/me", userHandler.GetMe)
