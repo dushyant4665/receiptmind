@@ -16,10 +16,6 @@ type UploadResponse = {
   status: string;
 };
 
-type LocalOptimisticReceipt = Receipt & {
-  isOptimistic?: boolean;
-};
-
 export function UploadDropzone() {
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement | null>(null);
