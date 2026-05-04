@@ -66,6 +66,7 @@ func (a *AIService) ExtractWithContext(ctx context.Context, imageData []byte, oc
 
 	for _, model := range models {
 		url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/%s:generateContent?key=%s", model, a.config.GeminiKey)
+		log.Info().Str("model", model).Msg("Attempting Gemini call...")
 
 		prompt := fmt.Sprintf(`Extract structured receipt data from the provided image and OCR text.
 OCR Text context: %s
@@ -139,10 +140,12 @@ Rules: Amount must be numeric, Date must be ISO format.`, ocrText)
 		contentText := geminiResp.Candidates[0].Content.Parts[0].Text
 		var result ExtractionResult
 		if err := json.Unmarshal([]byte(contentText), &result); err != nil {
+			log.Error().Err(err).Str("content", contentText).Msg("Failed to unmarshal AI response")
 			lastErr = err
 			continue
 		}
 
+		log.Info().Str("model", model).Msg("AI extraction successful")
 		return &result, nil
 	}
 
