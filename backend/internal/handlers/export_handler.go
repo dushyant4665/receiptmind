@@ -31,11 +31,54 @@ func (h *ExportHandler) ExportCSV(c *fiber.Ctx) error {
 
 	query := `SELECT
 				id,
-				COALESCE(NULLIF(vendor_name, ''), NULLIF(raw_vendor_name, ''), 'Unknown') AS export_vendor,
-				COALESCE(amount, raw_amount, 0) AS export_amount,
-				COALESCE(NULLIF(category, ''), NULLIF(raw_category, ''), 'Uncategorized') AS export_category,
-				COALESCE(receipt_date, raw_date, created_at) AS export_date,
-				COALESCE(confidence, raw_confidence, 0) AS export_confidence,
+				COALESCE(
+					NULLIF(vendor_name, ''),
+					NULLIF(raw_vendor_name, ''),
+					NULLIF(ai_output->>'vendor_name', ''),
+					NULLIF(raw_extraction->>'vendor_name', ''),
+					'Unknown'
+				) AS export_vendor,
+				COALESCE(
+					NULLIF(amount, 0),
+					NULLIF(raw_amount, 0),
+					CASE
+						WHEN regexp_replace(COALESCE(ai_output->>'amount', ''), '[,$ ]', '', 'g') ~ '^-?[0-9]+(\.[0-9]+)?$'
+						THEN regexp_replace(ai_output->>'amount', '[,$ ]', '', 'g')::numeric
+					END,
+					CASE
+						WHEN regexp_replace(COALESCE(raw_extraction->>'amount', ''), '[,$ ]', '', 'g') ~ '^-?[0-9]+(\.[0-9]+)?$'
+						THEN regexp_replace(raw_extraction->>'amount', '[,$ ]', '', 'g')::numeric
+					END,
+					0
+				)::double precision AS export_amount,
+				COALESCE(
+					NULLIF(category, ''),
+					NULLIF(raw_category, ''),
+					NULLIF(ai_output->>'category', ''),
+					NULLIF(raw_extraction->>'category', ''),
+					'Uncategorized'
+				) AS export_category,
+				COALESCE(
+					receipt_date,
+					raw_date,
+					CASE WHEN COALESCE(ai_output->>'receipt_date', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN (ai_output->>'receipt_date')::date END,
+					CASE WHEN COALESCE(ai_output->>'date', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN (ai_output->>'date')::date END,
+					CASE WHEN COALESCE(raw_extraction->>'receipt_date', '') ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' THEN (raw_extraction->>'receipt_date')::date END,
+					created_at
+				) AS export_date,
+				COALESCE(
+					NULLIF(confidence, 0),
+					NULLIF(raw_confidence, 0),
+					CASE
+						WHEN COALESCE(ai_output->>'confidence', '') ~ '^[0-9]+(\.[0-9]+)?$'
+						THEN (ai_output->>'confidence')::double precision
+					END,
+					CASE
+						WHEN COALESCE(raw_extraction->>'confidence', '') ~ '^[0-9]+(\.[0-9]+)?$'
+						THEN (raw_extraction->>'confidence')::double precision
+					END,
+					0
+				) AS export_confidence,
 				status
 			  FROM receipts WHERE organization_id = $1`
 	args := []interface{}{orgID}
@@ -44,7 +87,7 @@ func (h *ExportHandler) ExportCSV(c *fiber.Ctx) error {
 	if startDate != "" {
 		t, err := time.Parse("2006-01-02", startDate)
 		if err == nil {
-			query += fmt.Sprintf(" AND receipt_date >= $%d", argIdx)
+			query += fmt.Sprintf(" AND COALESCE(receipt_date, raw_date, created_at) >= $%d", argIdx)
 			args = append(args, t)
 			argIdx++
 		}
@@ -53,7 +96,7 @@ func (h *ExportHandler) ExportCSV(c *fiber.Ctx) error {
 	if endDate != "" {
 		t, err := time.Parse("2006-01-02", endDate)
 		if err == nil {
-			query += fmt.Sprintf(" AND receipt_date <= $%d", argIdx)
+			query += fmt.Sprintf(" AND COALESCE(receipt_date, raw_date, created_at) <= $%d", argIdx)
 			args = append(args, t)
 			argIdx++
 		}
@@ -72,7 +115,6 @@ func (h *ExportHandler) ExportCSV(c *fiber.Ctx) error {
 		log.Error().Err(err).Msg("Failed to query receipts for CSV export")
 		return SendError(c, fiber.StatusInternalServerError, "internal server error")
 	}
-	defer rows.Close()
 
 	filename := fmt.Sprintf("receipts_%s.csv", time.Now().Format("2006-01-02"))
 	c.Set("Content-Type", "text/csv")
@@ -81,6 +123,7 @@ func (h *ExportHandler) ExportCSV(c *fiber.Ctx) error {
 
 	// Stream the CSV response
 	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		defer rows.Close()
 		csvWriter := csv.NewWriter(w)
 		_ = csvWriter.Write([]string{"Receipt ID", "Vendor", "Amount", "Category", "Date", "Confidence", "Status"})
 

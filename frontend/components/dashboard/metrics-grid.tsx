@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 
 export function MetricsGrid() {
   const { data, isLoading } = useDashboardStats();
+  const automationRate = data && data.totalReceipts > 0 ? Math.round((data.processedCount / data.totalReceipts) * 100) : 0;
+  const timeSavedMinutes = data ? data.processedCount * 4 : 0;
 
   const metrics = [
     {
@@ -25,16 +27,16 @@ export function MetricsGrid() {
       bar: "bg-emerald",
     },
     {
-      title: "Processed",
-      value: data ? String(data.processedCount) : "--",
+      title: "Automation",
+      value: data ? `${automationRate}%` : "--",
       icon: CheckCircle2,
       color: "text-emerald",
       bg: "bg-emerald-surface",
       bar: "bg-emerald",
     },
     {
-      title: "Pending",
-      value: data ? String(data.pendingCount) : "--",
+      title: "Time Saved",
+      value: data ? `${Math.max(1, Math.round(timeSavedMinutes / 60))}h` : "--",
       icon: Clock,
       color: "text-amber",
       bg: "bg-amber-surface",

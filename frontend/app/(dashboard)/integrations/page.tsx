@@ -4,8 +4,9 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useEmailInbox } from "@/hooks/use-email-inbox";
+import { useIntegrationStatus } from "@/hooks/use-integrations";
 import { toast } from "sonner";
-import { Copy, Mail, CheckCircle2 } from "lucide-react";
+import { Copy, Mail, CheckCircle2, FileSpreadsheet, AlertCircle } from "lucide-react";
 
 const integrations = [
   ["QuickBooks Online", "Connect"],
@@ -18,9 +19,10 @@ const integrations = [
 
 export default function IntegrationsPage() {
   const { data: inbox, isLoading } = useEmailInbox();
+  const { data: status, isLoading: isStatusLoading } = useIntegrationStatus();
   const [copied, setCopied] = useState(false);
 
-  const emailAddress = inbox?.email ?? "";
+  const emailAddress = status?.email.address ?? inbox?.email ?? "";
 
   const handleCopy = async () => {
     if (!emailAddress) return;
@@ -97,6 +99,49 @@ export default function IntegrationsPage() {
               >
                 Send test email
               </Button>
+            </div>
+
+            <div className="mt-3 rounded-md border border-border-subtle bg-bg-page px-3 py-2 text-[11px] text-text-muted">
+              Email providers should POST attachments to <span className="font-mono text-text-primary">/email/webhook</span> with
+              <span className="font-mono text-text-primary"> X-Webhook-Token</span>. Set <span className="font-mono text-text-primary">EMAIL_WEBHOOK_TOKEN</span> in backend env.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-border-default bg-white p-5 shadow-xs">
+        <div className="flex items-start gap-4">
+          <div className="flex size-9 items-center justify-center rounded-lg border border-border-default bg-emerald-surface">
+            <FileSpreadsheet className="size-4 text-emerald" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-[13px] font-semibold text-text-primary">Google Sheets auto-sync</h2>
+              {isStatusLoading ? (
+                <span className="h-5 w-20 animate-pulse rounded-full bg-bg-subtle" />
+              ) : status?.google_sheets.enabled ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-surface px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald">
+                  <CheckCircle2 className="size-3" /> Connected
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-surface px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber">
+                  <AlertCircle className="size-3" /> Env needed
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-[12px] text-text-muted">
+              Processed receipts append automatically into monthly tabs like March 2026.
+            </p>
+            <div className="mt-3 grid gap-2 text-[11px] text-text-muted md:grid-cols-3">
+              <div className="rounded-md border border-border-subtle bg-bg-page px-3 py-2">
+                <span className="block font-mono text-text-primary">GOOGLE_SHEETS_ENABLED=true</span>
+              </div>
+              <div className="rounded-md border border-border-subtle bg-bg-page px-3 py-2">
+                <span className="block font-mono text-text-primary">GOOGLE_SHEETS_SPREADSHEET_ID</span>
+              </div>
+              <div className="rounded-md border border-border-subtle bg-bg-page px-3 py-2">
+                <span className="block font-mono text-text-primary">GOOGLE_SHEETS_ACCESS_TOKEN</span>
+              </div>
             </div>
           </div>
         </div>

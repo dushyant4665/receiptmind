@@ -86,6 +86,7 @@ func (s *Server) setupRoutes() {
 	dashboardHandler := handlers.NewDashboardHandler(s.DB, s.Redis.Client)
 	metricsHandler := handlers.NewMetricsHandler(s.DB, s.Redis.Client)
 	billingHandler := handlers.NewBillingHandler(s.DB, s.Config)
+	integrationHandler := handlers.NewIntegrationHandler(s.Config)
 
 	s.App.Get("/health", healthHandler.Health)
 	s.App.Get("/ready", healthHandler.Ready)
@@ -103,6 +104,9 @@ func (s *Server) setupRoutes() {
 	users.Put("/me", userHandler.UpdateMe)
 
 	email.Get("/inbox", middleware.AuthProtected(s.JWTService), emailHandler.Inbox)
+
+	integrations := s.App.Group("/integrations", middleware.AuthProtected(s.JWTService))
+	integrations.Get("/status", integrationHandler.Status)
 
 	receipts := s.App.Group("/receipts", middleware.AuthProtected(s.JWTService))
 	receipts.Post("/upload", middleware.RateLimit(s.Redis.Client, "upload", 10, 1*time.Minute), receiptHandler.Upload)

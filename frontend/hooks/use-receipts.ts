@@ -97,14 +97,9 @@ export function useReceipts(limit = 50, offset = 0, filters?: ReceiptFilters) {
   return useQuery({
     queryKey: ["receipts", session?.accessToken, limit, offset, filters],
     enabled: status === "authenticated" && Boolean(session?.accessToken),
-    refetchInterval: (query) => {
-      const data = query.state.data as ReceiptListResponse | undefined;
-      // If any receipt is processing or pending, poll every 2 seconds
-      const hasOngoing = data?.receipts?.some((r) => r.status === "pending" || r.status === "processing");
-      return hasOngoing ? 2000 : false;
-    },
+    refetchInterval: 3000,
     refetchIntervalInBackground: true,
-    staleTime: 0, // Ensure we always get fresh data when refetching
+    staleTime: 10_000,
     refetchOnWindowFocus: true,
     queryFn: async () => {
       const params = new URLSearchParams();
