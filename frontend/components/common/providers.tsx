@@ -1,12 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Session } from "next-auth";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { SessionProvider } from "next-auth/react";
+import { SessionProvider, useSession } from "next-auth/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/ui/theme-provider";
+import { setApiAuthToken } from "@/lib/api-client";
+
+function ApiAuthBinder({ children }: { children: React.ReactNode }) {
+  const { data: session } = useSession();
+
+  useEffect(() => {
+    setApiAuthToken(session?.accessToken ?? null);
+    return () => setApiAuthToken(null);
+  }, [session?.accessToken]);
+
+  return children;
+}
 
 export function Providers({
   children,
@@ -33,7 +45,7 @@ export function Providers({
       <SessionProvider session={session}>
         <QueryClientProvider client={queryClient}>
           <TooltipProvider delay={150}>
-            {children}
+            <ApiAuthBinder>{children}</ApiAuthBinder>
             <Toaster richColors position="top-right" />
           </TooltipProvider>
         </QueryClientProvider>

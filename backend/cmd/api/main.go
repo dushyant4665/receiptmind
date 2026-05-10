@@ -50,13 +50,17 @@ func main() {
 	exceptionService := services.NewExceptionService(db)
 	ruleService := services.NewRuleService(db)
 	storageService := services.NewStorageService(cfg)
-	sheetsService := services.NewGoogleSheetsService(cfg)
-	worker := services.NewWorker(queueService, db, aiService, exceptionService, ruleService, storageService, sheetsService, redis.Client, cfg.WorkerConcurrency)
+	sheetsService := services.NewGoogleSheetsService(cfg, db)
+	emailService := services.NewEmailService(cfg)
+	quotaService := services.NewQuotaService(db, cfg, emailService)
+	digestService := services.NewDigestService(db, emailService)
+	worker := services.NewWorker(queueService, db, aiService, exceptionService, ruleService, storageService, sheetsService, quotaService, redis.Client, cfg.WorkerConcurrency)
 
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	defer workerCancel()
 
 	go worker.Start(workerCtx)
+	go digestService.Start(workerCtx)
 
 	go func() {
 		log.Info().Str("port", cfg.Port).Msg("Starting server")

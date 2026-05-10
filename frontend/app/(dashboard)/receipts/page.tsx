@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Download, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -44,9 +44,14 @@ export default function ReceiptsPage() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [minAmount, setMinAmount] = useState("");
+  const [maxAmount, setMaxAmount] = useState("");
   const [selectedReceiptId, setSelectedReceiptId] = useState<string | null>(null);
   const [previewReceipt, setPreviewReceipt] = useState<Receipt | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const previousStatusesRef = useRef<Record<string, string>>({});
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedQuery(query.trim()), 250);
@@ -56,12 +61,32 @@ export default function ReceiptsPage() {
   const filters: ReceiptFilters = useMemo(() => ({
     search: debouncedQuery || undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
-  }), [debouncedQuery, statusFilter]);
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
+    minAmount: minAmount === "" ? undefined : Number(minAmount),
+    maxAmount: maxAmount === "" ? undefined : Number(maxAmount),
+  }), [debouncedQuery, endDate, maxAmount, minAmount, startDate, statusFilter]);
 
   const { data, isLoading, isFetching } = useReceipts(50, 0, filters);
   const { mutate: deleteReceipt } = useDeleteReceipt();
   const receipts = data?.receipts ?? [];
   const totalFromServer = data?.total ?? 0;
+
+  useEffect(() => {
+    if (receipts.length === 0) return;
+
+    for (const receipt of receipts) {
+      const previous = previousStatusesRef.current[receipt.id];
+      const finished = receipt.status === "processed" || receipt.status === "needs_review" || receipt.status === "failed";
+      if ((previous === "processing" || previous === "pending") && finished) {
+        if (receipt.status === "processed") toast.success(`${receipt.vendorName || "Receipt"} processed`);
+        if (receipt.status === "needs_review") toast.warning(`${receipt.vendorName || "Receipt"} needs review`);
+        if (receipt.status === "failed") toast.error("Receipt processing failed");
+      }
+    }
+
+    previousStatusesRef.current = Object.fromEntries(receipts.map((receipt) => [receipt.id, receipt.status]));
+  }, [receipts]);
 
   const selectedReceipt = useMemo(() => {
     if (!selectedReceiptId) return null;
@@ -128,10 +153,10 @@ export default function ReceiptsPage() {
 
       <section className="overflow-hidden rounded-lg border border-border-default bg-white shadow-xs">
         <div className="flex flex-col gap-3 border-b border-border-subtle p-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-col gap-2 md:flex-row">
+          <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_140px_130px_130px_120px_120px]">
             <Input
               placeholder="Search vendor, category, >500, last month..."
-              className="h-8 w-full text-[12px] md:w-[280px]"
+              className="h-8 w-full text-[12px]"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
@@ -147,6 +172,10 @@ export default function ReceiptsPage() {
               <option value="needs_review">Needs review</option>
               <option value="failed">Failed</option>
             </select>
+            <Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="h-8 text-[12px]" />
+            <Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="h-8 text-[12px]" />
+            <Input inputMode="decimal" placeholder="Min $" value={minAmount} onChange={(event) => setMinAmount(event.target.value)} className="h-8 text-[12px]" />
+            <Input inputMode="decimal" placeholder="Max $" value={maxAmount} onChange={(event) => setMaxAmount(event.target.value)} className="h-8 text-[12px]" />
           </div>
           <div className="flex items-center gap-3">
             {isFetching && !isLoading && <span className="text-[11px] text-amber">Syncing...</span>}

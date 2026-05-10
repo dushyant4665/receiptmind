@@ -24,12 +24,13 @@ type Worker struct {
 	ruleService      *RuleService
 	storageService   *StorageService
 	sheetsService    *GoogleSheetsService
+	quotaService     *QuotaService
 	redis            *redis.Client
 	concurrency      int
 	aiLimiter        chan struct{}
 }
 
-func NewWorker(queue *QueueService, db *database.Database, aiSvc *AIService, exceptionSvc *ExceptionService, ruleSvc *RuleService, storageSvc *StorageService, sheetsSvc *GoogleSheetsService, redisClient *redis.Client, concurrency int) *Worker {
+func NewWorker(queue *QueueService, db *database.Database, aiSvc *AIService, exceptionSvc *ExceptionService, ruleSvc *RuleService, storageSvc *StorageService, sheetsSvc *GoogleSheetsService, quotaSvc *QuotaService, redisClient *redis.Client, concurrency int) *Worker {
 	if concurrency < 1 {
 		concurrency = 5
 	}
@@ -45,6 +46,7 @@ func NewWorker(queue *QueueService, db *database.Database, aiSvc *AIService, exc
 		ruleService:      ruleSvc,
 		storageService:   storageSvc,
 		sheetsService:    sheetsSvc,
+		quotaService:     quotaSvc,
 		redis:            redisClient,
 		concurrency:      concurrency,
 		aiLimiter:        make(chan struct{}, aiConcurrency),
@@ -129,7 +131,7 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 	}
 
 	_, err = w.db.Pool.Exec(ctx,
-		"UPDATE receipts SET status = 'processing' WHERE id = $1",
+		"UPDATE receipts SET status = 'processing', processing_state = 'processing', processing_started_at = COALESCE(processing_started_at, NOW()), updated_at = NOW() WHERE id = $1",
 		receiptID,
 	)
 	if err != nil {
@@ -139,6 +141,12 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 	}
 
 	log.Debug().Str("receipt_id", receiptID).Msg("Worker: Receipt status updated to processing")
+	_, _ = w.db.Pool.Exec(ctx,
+		`UPDATE receipt_processing_jobs
+		 SET processing_state = 'processing', attempts = $1, started_at = COALESCE(started_at, NOW()), updated_at = NOW(), queue_job_id = $2
+		 WHERE receipt_id = $3 AND processing_state IN ('queued', 'processing')`,
+		job.Attempts+1, job.ID, receiptID,
+	)
 
 	var receipt models.Receipt
 	var fileName string
@@ -191,6 +199,8 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 	category := rawCategory
 	confidence := rawConfidence
 	needsReview := confidence < 0.75 || vendorName == "" || amount <= 0 || extraction.ReceiptDate == ""
+	valConfidence := validationConfidence(extraction)
+	combinedConfidence := finalConfidence(confidence, valConfidence)
 	newStatus := "processed"
 	if needsReview {
 		newStatus = "needs_review"
@@ -209,15 +219,20 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 			receipt_date = $9,
 			category = $10,
 			confidence = $11,
-			needs_review = $12,
-			raw_text = $13,
-			ai_output = COALESCE($14::jsonb, '{}'::jsonb),
+			validation_confidence = $12,
+			final_confidence = $13,
+			needs_review = $14,
+			raw_text = $15,
+			ai_output = COALESCE($16::jsonb, '{}'::jsonb),
+			processing_state = $17,
+			processing_finished_at = NOW(),
 			updated_at = NOW()
-		WHERE id = $15`,
+		WHERE id = $18`,
 		newStatus,
 		nullStr(rawVendor), rawAmount, parsedDate, nullStr(rawCategory), rawConfidence,
 		nullStr(vendorName), amount, parsedDate, nullStr(category), confidence,
-		needsReview, extraction.RawText, extraction.AIOutput,
+		valConfidence, combinedConfidence,
+		needsReview, extraction.RawText, extraction.AIOutput, newStatus,
 		receiptID,
 	)
 	if err != nil {
@@ -229,6 +244,12 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 	if err := w.exceptionService.CheckAndCreate(ctx, &receipt, extraction); err != nil {
 		log.Error().Err(err).Str("receipt_id", receiptID).Msg("Exception check failed")
 	}
+	_, _ = w.db.Pool.Exec(ctx,
+		`UPDATE receipt_processing_jobs
+		 SET processing_state = $1, finished_at = NOW(), updated_at = NOW()
+		 WHERE receipt_id = $2 AND processing_state = 'processing'`,
+		newStatus, receiptID,
+	)
 
 	if w.sheetsService != nil && newStatus == "processed" {
 		date := extraction.ReceiptDate
@@ -236,14 +257,20 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 			date = parsedDate.Format("2006-01-02")
 		}
 		if err := w.sheetsService.SyncReceipt(ctx, SheetRow{
-			Date:     date,
-			Vendor:   vendorName,
-			Amount:   amount,
-			Category: category,
-			Status:   newStatus,
+			OrganizationID: receipt.OrganizationID,
+			Date:           date,
+			Vendor:         vendorName,
+			Amount:         amount,
+			Category:       category,
+			Status:         newStatus,
+			Notes:          "ReceiptMind auto-sync",
 		}); err != nil {
 			log.Error().Err(err).Str("receipt_id", receiptID).Msg("Google Sheets sync failed")
 		}
+	}
+
+	if w.quotaService != nil && newStatus == "processed" {
+		w.quotaService.IncrementProcessed(ctx, receipt.OrganizationID)
 	}
 
 	// Invalidate caches for this org
@@ -272,6 +299,10 @@ func (w *Worker) handleFailure(ctx context.Context, receiptID string, job *Queue
 	}
 	if job.Attempts >= limit {
 		w.markFailed(ctx, receiptID)
+		_, _ = w.db.Pool.Exec(ctx,
+			`UPDATE receipt_processing_jobs SET processing_state = 'failed', attempts = $1, last_error = $2, finished_at = NOW(), updated_at = NOW() WHERE receipt_id = $3`,
+			job.Attempts, job.LastError, receiptID,
+		)
 		w.queue.EnqueueDeadLetter(ctx, job, err.Error())
 		return
 	}
@@ -284,11 +315,15 @@ func (w *Worker) handleFailure(ctx context.Context, receiptID string, job *Queue
 		Msg("Job failed, re-enqueuing with backoff")
 
 	_ = w.queue.EnqueueDelayed(ctx, job, backoff)
+	_, _ = w.db.Pool.Exec(ctx,
+		`UPDATE receipt_processing_jobs SET processing_state = 'retrying', attempts = $1, last_error = $2, updated_at = NOW() WHERE receipt_id = $3`,
+		job.Attempts, job.LastError, receiptID,
+	)
 }
 
 func (w *Worker) markFailed(ctx context.Context, receiptID string) {
 	_, err := w.db.Pool.Exec(ctx,
-		"UPDATE receipts SET status = 'failed' WHERE id = $1",
+		"UPDATE receipts SET status = 'failed', processing_state = 'failed', processing_finished_at = NOW(), updated_at = NOW() WHERE id = $1",
 		receiptID,
 	)
 	if err != nil {
@@ -322,4 +357,35 @@ func nullStr(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+func validationConfidence(extraction *ExtractionResult) float64 {
+	score := 1.0
+	if extraction.VendorName == "" {
+		score -= 0.25
+	}
+	if extraction.Amount <= 0 {
+		score -= 0.35
+	}
+	if extraction.ReceiptDate == "" {
+		score -= 0.25
+	}
+	if extraction.Category == "" || extraction.Category == "General" {
+		score -= 0.10
+	}
+	if score < 0 {
+		return 0
+	}
+	return score
+}
+
+func finalConfidence(aiConfidence, validationConfidence float64) float64 {
+	final := (aiConfidence * 0.7) + (validationConfidence * 0.3)
+	if final < 0 {
+		return 0
+	}
+	if final > 1 {
+		return 1
+	}
+	return final
 }

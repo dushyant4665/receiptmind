@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -33,15 +34,16 @@ func NewStorageService(cfg *config.Config) *StorageService {
 func (s *StorageService) UploadFile(fileData []byte, filename string, organizationID string) (string, error) {
 	ext := strings.ToLower(filepath.Ext(filename))
 	safeName := uuid.New().String() + ext
-	filePath := fmt.Sprintf("%s/%s", organizationID, safeName)
+	now := time.Now().UTC()
+	filePath := fmt.Sprintf("%s/%04d/%02d/%s", organizationID, now.Year(), now.Month(), safeName)
 
 	// Fallback to local storage if Supabase not configured
 	if s.config.SupabaseURL == "" || s.config.SupabaseURL == "http://localhost:54321" {
-		dir := fmt.Sprintf("uploads/%s", organizationID)
+		localPath := filepath.Join("uploads", filepath.FromSlash(filePath))
+		dir := filepath.Dir(localPath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return "", fmt.Errorf("failed to create upload directory: %w", err)
 		}
-		localPath := fmt.Sprintf("%s/%s", dir, safeName)
 		if err := os.WriteFile(localPath, fileData, 0644); err != nil {
 			return "", fmt.Errorf("failed to write file: %w", err)
 		}
@@ -76,11 +78,11 @@ func (s *StorageService) UploadFile(fileData []byte, filename string, organizati
 	resp, err := s.client.Do(req)
 	if err != nil {
 		log.Error().Err(err).Msg("Supabase upload request failed, falling back to local")
-		dir := fmt.Sprintf("uploads/%s", organizationID)
+		localPath := filepath.Join("uploads", filepath.FromSlash(filePath))
+		dir := filepath.Dir(localPath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return "", fmt.Errorf("failed to create upload directory: %w", err)
 		}
-		localPath := fmt.Sprintf("%s/%s", dir, safeName)
 		if err := os.WriteFile(localPath, fileData, 0644); err != nil {
 			return "", fmt.Errorf("failed to write file locally: %w", err)
 		}
@@ -92,11 +94,11 @@ func (s *StorageService) UploadFile(fileData []byte, filename string, organizati
 	if resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
 		log.Error().Int("status", resp.StatusCode).Str("body", string(body)).Msg("Storage upload failed, falling back to local")
-		dir := fmt.Sprintf("uploads/%s", organizationID)
+		localPath := filepath.Join("uploads", filepath.FromSlash(filePath))
+		dir := filepath.Dir(localPath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return "", fmt.Errorf("failed to create upload directory: %w", err)
 		}
-		localPath := fmt.Sprintf("%s/%s", dir, safeName)
 		if err := os.WriteFile(localPath, fileData, 0644); err != nil {
 			return "", fmt.Errorf("failed to write file locally: %w", err)
 		}
@@ -149,7 +151,10 @@ func (s *StorageService) GetSignedURL(filePath string) (string, error) {
 		return "", fmt.Errorf("failed to decode signed url response: %w", err)
 	}
 
-	return fmt.Sprintf("%s/storage/v1/object/sign/%s/%s", s.config.SupabaseURL, s.config.SupabaseBucket, result.SignedURL), nil
+	if strings.HasPrefix(result.SignedURL, "http") {
+		return result.SignedURL, nil
+	}
+	return strings.TrimRight(s.config.SupabaseURL, "/") + result.SignedURL, nil
 }
 
 func (s *StorageService) DownloadFile(ctx context.Context, filePath string) ([]byte, error) {
@@ -195,6 +200,13 @@ func (s *StorageService) DownloadFile(ctx context.Context, filePath string) ([]b
 }
 
 func (s *StorageService) DeleteFile(ctx context.Context, filePath string) error {
+	localPath := filepath.Join("uploads", filepath.FromSlash(filePath))
+	if err := os.Remove(localPath); err == nil || os.IsNotExist(err) {
+		if s.config.SupabaseURL == "" || s.config.SupabaseURL == "http://localhost:54321" {
+			return nil
+		}
+	}
+
 	url := fmt.Sprintf("%s/storage/v1/object/%s/%s", s.config.SupabaseURL, s.config.SupabaseBucket, filePath)
 
 	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)

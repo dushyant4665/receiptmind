@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useEmailInbox } from "@/hooks/use-email-inbox";
-import { useIntegrationStatus } from "@/hooks/use-integrations";
+import { useConnectGoogleSheets, useDisconnectGoogleSheets, useIntegrationStatus } from "@/hooks/use-integrations";
 import { toast } from "sonner";
 import { Copy, Mail, CheckCircle2, FileSpreadsheet, AlertCircle } from "lucide-react";
 
@@ -20,6 +20,8 @@ const integrations = [
 export default function IntegrationsPage() {
   const { data: inbox, isLoading } = useEmailInbox();
   const { data: status, isLoading: isStatusLoading } = useIntegrationStatus();
+  const connectGoogle = useConnectGoogleSheets();
+  const disconnectGoogle = useDisconnectGoogleSheets();
   const [copied, setCopied] = useState(false);
 
   const emailAddress = status?.email.address ?? inbox?.email ?? "";
@@ -132,16 +134,29 @@ export default function IntegrationsPage() {
             <p className="mt-1 text-[12px] text-text-muted">
               Processed receipts append automatically into monthly tabs like March 2026.
             </p>
-            <div className="mt-3 grid gap-2 text-[11px] text-text-muted md:grid-cols-3">
-              <div className="rounded-md border border-border-subtle bg-bg-page px-3 py-2">
-                <span className="block font-mono text-text-primary">GOOGLE_SHEETS_ENABLED=true</span>
+            {status?.google_sheets.connected ? (
+              <div className="mt-3 rounded-md border border-border-subtle bg-bg-page px-3 py-2 text-[11px] text-text-muted">
+                <span className="block">Spreadsheet ID: <span className="font-mono text-text-primary">{status.google_sheets.spreadsheet_id}</span></span>
+                <span className="block">Last sync: {status.google_sheets.last_sync_at ? new Date(status.google_sheets.last_sync_at).toLocaleString() : "waiting for first receipt"}</span>
+                {status.google_sheets.last_error && <span className="block text-red">Last error: {status.google_sheets.last_error}</span>}
               </div>
-              <div className="rounded-md border border-border-subtle bg-bg-page px-3 py-2">
-                <span className="block font-mono text-text-primary">GOOGLE_SHEETS_SPREADSHEET_ID</span>
+            ) : (
+              <div className="mt-3 rounded-md border border-border-subtle bg-bg-page px-3 py-2 text-[11px] text-text-muted">
+                {status?.google_sheets.oauth_configured
+                  ? "Connect Google once. ReceiptMind will create and maintain monthly bookkeeping sheets automatically."
+                  : "Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REDIRECT_URL to enable OAuth connect."}
               </div>
-              <div className="rounded-md border border-border-subtle bg-bg-page px-3 py-2">
-                <span className="block font-mono text-text-primary">GOOGLE_SHEETS_ACCESS_TOKEN</span>
-              </div>
+            )}
+            <div className="mt-3 flex gap-2">
+              {status?.google_sheets.connected ? (
+                <Button variant="outline" size="sm" disabled={disconnectGoogle.isPending} onClick={() => disconnectGoogle.mutate()}>
+                  {disconnectGoogle.isPending ? "Disconnecting..." : "Disconnect"}
+                </Button>
+              ) : (
+                <Button size="sm" disabled={!status?.google_sheets.oauth_configured || connectGoogle.isPending} onClick={() => connectGoogle.mutate()}>
+                  {connectGoogle.isPending ? "Opening Google..." : "Connect Google Sheets"}
+                </Button>
+              )}
             </div>
           </div>
         </div>

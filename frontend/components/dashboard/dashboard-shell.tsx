@@ -20,11 +20,15 @@ import {
   ChevronRight,
   Bell,
   Zap,
+  Users,
+  Landmark,
+  Activity,
 } from "lucide-react";
 import { Logo } from "@/components/common/logo";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useBillingStatus } from "@/hooks/use-billing";
+import { useProfile } from "@/hooks/use-profile";
 
 const navigation = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -32,6 +36,9 @@ const navigation = [
   { href: "/expenses", label: "Expenses", icon: CreditCard },
   { href: "/exceptions", label: "Exceptions", icon: AlertCircle, badge: 3 },
   { href: "/rules", label: "Rules", icon: Zap },
+  { href: "/accountant", label: "Accountant", icon: Users },
+  { href: "/reconciliation", label: "Reconcile", icon: Landmark },
+  { href: "/ops", label: "Ops", icon: Activity },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/integrations", label: "Integrations", icon: Layers },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -55,12 +62,13 @@ type DashboardShellProps = {
 export function DashboardShell({ children, initialUser }: DashboardShellProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const { data: profile } = useProfile();
   const { data: billing } = useBillingStatus();
-  const displayName = session?.user?.name ?? initialUser?.name ?? "User";
-  const displayEmail = session?.user?.email ?? initialUser?.email ?? "Enterprise";
+  const displayName = profile?.name || session?.user?.name || initialUser?.name || "User";
+  const displayEmail = profile?.email || session?.user?.email || initialUser?.email || "Enterprise";
   const initials = displayName.slice(0, 2).toUpperCase();
 
-  const usagePercent = billing ? Math.min(Math.round((billing.receipt_count_this_month / billing.receipt_limit) * 100), 100) : 0;
+  const usagePercent = billing?.receipt_limit ? Math.min(Math.round((billing.receipt_count_this_month / billing.receipt_limit) * 100), 100) : 0;
 
   return (
     <div className="min-h-screen bg-bg-page text-text-primary flex">
@@ -141,7 +149,7 @@ export function DashboardShell({ children, initialUser }: DashboardShellProps) {
             <div className="h-1 rounded-full bg-border-default overflow-hidden">
               <div className={cn("h-full rounded-full transition-all", usagePercent >= 90 ? "bg-red" : "bg-gradient-to-r from-amber to-amber-hover")} style={{ width: `${usagePercent}%` }} />
             </div>
-            <p className="mt-1.5 text-[10px] text-text-ghost">{billing?.receipt_count_this_month ?? 0} / {billing?.receipt_limit ?? 50} this month</p>
+            <p className="mt-1.5 text-[10px] text-text-ghost">{billing?.receipt_count_this_month ?? 0} / {billing?.receipt_limit ? billing.receipt_limit : "Unlimited"} this month</p>
           </div>
 
           {/* User */}

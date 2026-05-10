@@ -31,6 +31,18 @@ type Config struct {
 	GoogleSheetsEnabled       bool
 	GoogleSheetsSpreadsheetID string
 	GoogleSheetsAccessToken   string
+	GoogleClientID            string
+	GoogleClientSecret        string
+	GoogleRedirectURL         string
+	StripeSecretKey           string
+	StripeCheckoutURL         string
+	StripeProPriceID          string
+	StripeTeamPriceID         string
+	StripeWebhookSecret       string
+	AppURL                    string
+	ResendAPIKey              string
+	EmailFrom                 string
+	FreePlanReceiptLimit      int
 }
 
 func Load() *Config {
@@ -62,6 +74,18 @@ func Load() *Config {
 		GoogleSheetsEnabled:       getEnv("GOOGLE_SHEETS_ENABLED", "false") == "true",
 		GoogleSheetsSpreadsheetID: getEnv("GOOGLE_SHEETS_SPREADSHEET_ID", ""),
 		GoogleSheetsAccessToken:   getEnv("GOOGLE_SHEETS_ACCESS_TOKEN", ""),
+		GoogleClientID:            getEnv("GOOGLE_CLIENT_ID", ""),
+		GoogleClientSecret:        getEnv("GOOGLE_CLIENT_SECRET", ""),
+		GoogleRedirectURL:         getEnv("GOOGLE_REDIRECT_URL", ""),
+		StripeSecretKey:           getEnv("STRIPE_SECRET_KEY", ""),
+		StripeCheckoutURL:         getEnv("STRIPE_CHECKOUT_URL", ""),
+		StripeProPriceID:          getEnv("STRIPE_PRO_PRICE_ID", ""),
+		StripeTeamPriceID:         getEnv("STRIPE_TEAM_PRICE_ID", ""),
+		StripeWebhookSecret:       getEnv("STRIPE_WEBHOOK_SECRET", ""),
+		AppURL:                    getEnv("APP_URL", getEnv("FRONTEND_URL", "http://localhost:3000")),
+		ResendAPIKey:              getEnv("RESEND_API_KEY", ""),
+		EmailFrom:                 getEnv("EMAIL_FROM", "ReceiptMind <hello@receiptmind.app>"),
+		FreePlanReceiptLimit:      getEnvInt("FREE_PLAN_RECEIPT_LIMIT", getEnvInt("FREE_RECEIPT_LIMIT", 10)),
 	}
 
 	if cfg.GeminiKey != "" {

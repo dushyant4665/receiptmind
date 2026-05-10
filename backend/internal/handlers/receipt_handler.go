@@ -32,10 +32,12 @@ type ReceiptHandler struct {
 	QueueService     *services.QueueService
 	ExceptionService *services.ExceptionService
 	RuleService      *services.RuleService
+	QuotaService     *services.QuotaService
+	AuditService     *services.AuditService
 	Redis            *redis.Client
 }
 
-func NewReceiptHandler(db *database.Database, cfg *config.Config, storageSvc *services.StorageService, queueSvc *services.QueueService, exceptionSvc *services.ExceptionService, ruleSvc *services.RuleService, redisClient *redis.Client) *ReceiptHandler {
+func NewReceiptHandler(db *database.Database, cfg *config.Config, storageSvc *services.StorageService, queueSvc *services.QueueService, exceptionSvc *services.ExceptionService, ruleSvc *services.RuleService, quotaSvc *services.QuotaService, auditSvc *services.AuditService, redisClient *redis.Client) *ReceiptHandler {
 	return &ReceiptHandler{
 		DB:               db,
 		Config:           cfg,
@@ -43,6 +45,8 @@ func NewReceiptHandler(db *database.Database, cfg *config.Config, storageSvc *se
 		QueueService:     queueSvc,
 		ExceptionService: exceptionSvc,
 		RuleService:      ruleSvc,
+		QuotaService:     quotaSvc,
+		AuditService:     auditSvc,
 		Redis:            redisClient,
 	}
 }
@@ -58,18 +62,12 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(string)
 	orgID := c.Locals("organization_id").(string)
 
-	// Paywall check: free limit is 50 receipts per month
 	ctx := context.Background()
-	var receiptCount int
-	err := h.DB.Pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM receipts
-		 WHERE organization_id = $1 AND created_at >= DATE_TRUNC('month', NOW())`,
-		orgID,
-	).Scan(&receiptCount)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to count receipts for paywall")
-	} else if receiptCount >= 50 {
-		return SendError(c, fiber.StatusPaymentRequired, "limit_reached: monthly receipt limit exceeded. Upgrade your plan to continue.")
+	if h.QuotaService != nil {
+		canProcess, used, limit := h.QuotaService.CanProcess(ctx, orgID)
+		if !canProcess {
+			return SendError(c, fiber.StatusPaymentRequired, h.QuotaService.BlockMessage(used, limit))
+		}
 	}
 
 	file, err := c.FormFile("file")
@@ -124,24 +122,39 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 
 	// 1. Save receipt immediately. Heavy extraction is always done by workers.
 	_, err = h.DB.Pool.Exec(ctx,
-		`INSERT INTO receipts (id, organization_id, user_id, file_path, file_url, file_name, file_hash, status, currency, line_items, is_billable, is_reimbursable, needs_review, source, raw_extraction, user_corrections, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, 'processing', 'USD', '[]'::jsonb, false, false, false, 'upload', '{}'::jsonb, '{}'::jsonb, NOW())`,
+		`INSERT INTO receipts (id, organization_id, user_id, file_path, file_url, file_name, file_hash, status, processing_state, currency, line_items, is_billable, is_reimbursable, needs_review, source, raw_extraction, user_corrections, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, 'processing', 'queued', 'USD', '[]'::jsonb, false, false, false, 'upload', '{}'::jsonb, '{}'::jsonb, NOW())`,
 		receiptID, orgID, userID, filePath, base64Data, file.Filename, fileHash,
 	)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to insert receipt")
 		return SendError(c, fiber.StatusInternalServerError, "failed to create receipt")
 	}
+	_, _ = h.DB.Pool.Exec(ctx,
+		`INSERT INTO storage_objects (id, organization_id, receipt_id, path, file_hash, size_bytes, content_type)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 ON CONFLICT (path) DO NOTHING`,
+		uuid.NewString(), orgID, receiptID, filePath, fileHash, len(data), mimeType,
+	)
 	h.invalidateCache(orgID)
 
-	if err := h.QueueService.Enqueue(ctx, "process_receipt", map[string]interface{}{
+	queuePayload := map[string]interface{}{
 		"receipt_id":      receiptID,
 		"file_url":        filePath,
 		"org_id":          orgID,
 		"idempotency_key": fmt.Sprintf("receipt:%s", receiptID),
-	}); err != nil {
+	}
+	if err := h.QueueService.Enqueue(ctx, "process_receipt", queuePayload); err != nil {
 		log.Error().Err(err).Str("receipt_id", receiptID).Msg("Failed to enqueue receipt processing job")
 		return SendError(c, fiber.StatusServiceUnavailable, "receipt saved but processing queue is unavailable")
+	}
+	_, _ = h.DB.Pool.Exec(ctx,
+		`INSERT INTO receipt_processing_jobs (id, receipt_id, organization_id, processing_state)
+		 VALUES ($1, $2, $3, 'queued')`,
+		uuid.NewString(), receiptID, orgID,
+	)
+	if h.AuditService != nil {
+		h.AuditService.Log(ctx, orgID, userID, "receipt.uploaded", "receipt", receiptID, c.IP(), c.Get("User-Agent"), "{}")
 	}
 
 	// Return SUCCESS immediately with the saved data
@@ -467,6 +480,10 @@ func (h *ReceiptHandler) EditReceipt(c *fiber.Ctx) error {
 	if req.VendorName != nil && req.Category != nil {
 		go h.RuleService.AutoLearnFromEdit(context.Background(), orgID, *req.VendorName, *req.Category)
 	}
+	if h.AuditService != nil {
+		userID := c.Locals("user_id").(string)
+		h.AuditService.Log(ctx, orgID, userID, "receipt.edited", "receipt", receiptID, c.IP(), c.Get("User-Agent"), "{}")
+	}
 
 	h.invalidateCache(orgID)
 
@@ -494,6 +511,7 @@ func (h *ReceiptHandler) DeleteReceipt(c *fiber.Ctx) error {
 	if err := h.StorageService.DeleteFile(ctx, filePath); err != nil {
 		log.Error().Err(err).Str("file_path", filePath).Msg("Failed to delete file from storage")
 	}
+	_, _ = h.DB.Pool.Exec(ctx, "UPDATE storage_objects SET deleted_at = NOW() WHERE organization_id = $1 AND path = $2", orgID, filePath)
 
 	_, err = h.DB.Pool.Exec(ctx,
 		"DELETE FROM receipts WHERE id = $1 AND organization_id = $2",

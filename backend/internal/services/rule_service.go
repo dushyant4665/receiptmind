@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -28,12 +30,26 @@ func (r *RuleService) ApplyRules(ctx context.Context, orgID string, extraction *
 
 	result := *extraction
 
+	normalizedVendor := normalizeVendor(extraction.VendorName)
+	if normalizedVendor != "" {
+		var canonical string
+		err := r.db.Pool.QueryRow(ctx,
+			`SELECT canonical_vendor FROM vendor_aliases
+			 WHERE organization_id = $1 AND normalized_alias = $2 AND deleted_at IS NULL
+			 ORDER BY confidence DESC LIMIT 1`,
+			orgID, normalizedVendor,
+		).Scan(&canonical)
+		if err == nil && canonical != "" {
+			result.VendorName = canonical
+		}
+	}
+
 	for _, rule := range rules {
 		matched := false
 
 		switch rule.ConditionType {
 		case "vendor":
-			matched = result.VendorName == rule.ConditionValue
+			matched = normalizeVendor(result.VendorName) == normalizeVendor(rule.ConditionValue)
 		case "category":
 			matched = result.Category == rule.ConditionValue
 		}
@@ -158,6 +174,17 @@ func (r *RuleService) AutoLearnFromEdit(ctx context.Context, orgID, vendorName, 
 	}
 
 	if eventCount >= 3 {
+		normalized := normalizeVendor(vendorName)
+		if normalized != "" {
+			_, _ = r.db.Pool.Exec(ctx,
+				`INSERT INTO vendor_aliases (id, organization_id, canonical_vendor, alias, normalized_alias, confidence)
+				 VALUES ($1, $2, $3, $4, $5, 0.92)
+				 ON CONFLICT (organization_id, normalized_alias)
+				 DO UPDATE SET canonical_vendor = EXCLUDED.canonical_vendor, confidence = GREATEST(vendor_aliases.confidence, EXCLUDED.confidence), updated_at = NOW()`,
+				uuid.NewString(), orgID, vendorName, vendorName, normalized,
+			)
+		}
+
 		// Check if rule already exists
 		var existingID string
 		err := r.db.Pool.QueryRow(ctx,
@@ -193,4 +220,20 @@ func (r *RuleService) AutoLearnFromEdit(ctx context.Context, orgID, vendorName, 
 			Int("events", eventCount).
 			Msg("Auto-learned rule created from learning events")
 	}
+}
+
+var nonVendorChars = regexp.MustCompile(`[^a-z0-9]+`)
+
+func normalizeVendor(vendor string) string {
+	vendor = strings.ToLower(strings.TrimSpace(vendor))
+	replacements := map[string]string{
+		"amazon web services": "aws",
+		"amzn aws":            "aws",
+		"amazon aws":          "aws",
+	}
+	if replacement, ok := replacements[vendor]; ok {
+		vendor = replacement
+	}
+	vendor = nonVendorChars.ReplaceAllString(vendor, " ")
+	return strings.Join(strings.Fields(vendor), " ")
 }

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -69,18 +68,8 @@ export default function SignupPage() {
               organization_name: companyName,
             });
 
-            const result = await signIn("credentials", {
-              email,
-              password,
-              redirect: false,
-            });
-
-            if (!result || result.error) {
-              throw new Error(result?.error ?? "Unable to sign in after registration.");
-            }
-
-            toast.success("Account created.");
-            router.push("/dashboard");
+            toast.success("Account created. Check your email to verify.");
+            router.push(`/verify-email?email=${encodeURIComponent(email)}`);
             router.refresh();
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unable to create account.";

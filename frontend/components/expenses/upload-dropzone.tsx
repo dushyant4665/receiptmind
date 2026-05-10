@@ -63,6 +63,7 @@ export function UploadDropzone() {
   const { data: session } = useSession();
   const [progress, setProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const handleUpload = async (files: FileList | null) => {
@@ -230,7 +231,28 @@ export function UploadDropzone() {
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="flex w-full cursor-pointer flex-col items-center gap-2.5 rounded-lg border-2 border-dashed border-border-default bg-bg-page/50 p-8 text-center transition-all duration-200 hover:border-amber hover:bg-amber-surface/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber"
+          onDragEnter={(event) => {
+            event.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={(event) => {
+            event.preventDefault();
+            setIsDragging(false);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setIsDragging(false);
+            void handleUpload(event.dataTransfer.files);
+          }}
+          className={`flex w-full cursor-pointer flex-col items-center gap-2.5 rounded-lg border-2 border-dashed p-8 text-center transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber ${
+            isDragging
+              ? "border-amber bg-amber-surface/40"
+              : "border-border-default bg-bg-page/50 hover:border-amber hover:bg-amber-surface/30"
+          }`}
         >
           <span className="flex size-10 items-center justify-center rounded-lg border border-border-default bg-white text-amber shadow-xs">
             <UploadCloud className="size-5" strokeWidth={1.8} />

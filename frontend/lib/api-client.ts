@@ -11,6 +11,18 @@ export const apiClient = axios.create({
 });
 
 let isRedirecting = false;
+let authToken: string | null = null;
+
+export function setApiAuthToken(token?: string | null) {
+  authToken = token ?? null;
+}
+
+apiClient.interceptors.request.use((config) => {
+  if (authToken && !config.headers.Authorization) {
+    config.headers.Authorization = `Bearer ${authToken}`;
+  }
+  return config;
+});
 
 apiClient.interceptors.response.use(
   (response) => response,

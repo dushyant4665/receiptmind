@@ -25,15 +25,19 @@ type EmailHandler struct {
 	Config         *config.Config
 	StorageService *services.StorageService
 	QueueService   *services.QueueService
+	QuotaService   *services.QuotaService
+	AuditService   *services.AuditService
 	Redis          *redis.Client
 }
 
-func NewEmailHandler(db *database.Database, cfg *config.Config, storageSvc *services.StorageService, queueSvc *services.QueueService, redisClient *redis.Client) *EmailHandler {
+func NewEmailHandler(db *database.Database, cfg *config.Config, storageSvc *services.StorageService, queueSvc *services.QueueService, quotaSvc *services.QuotaService, auditSvc *services.AuditService, redisClient *redis.Client) *EmailHandler {
 	return &EmailHandler{
 		DB:             db,
 		Config:         cfg,
 		StorageService: storageSvc,
 		QueueService:   queueSvc,
+		QuotaService:   quotaSvc,
+		AuditService:   auditSvc,
 		Redis:          redisClient,
 	}
 }
@@ -91,6 +95,14 @@ func (h *EmailHandler) Inbound(c *fiber.Ctx) error {
 	processedCount := 0
 
 	for _, att := range req.Attachments {
+		if h.QuotaService != nil {
+			canProcess, used, limit := h.QuotaService.CanProcess(ctx, orgID)
+			if !canProcess {
+				log.Warn().Str("org_id", orgID).Int("used", used).Int("limit", limit).Msg("Email ingestion paused by quota")
+				break
+			}
+		}
+
 		ext := strings.ToLower(filepath.Ext(att.Filename))
 		if !allowedExtensions[ext] {
 			log.Warn().Str("filename", att.Filename).Msg("Skipping invalid file type from email")
@@ -132,14 +144,20 @@ func (h *EmailHandler) Inbound(c *fiber.Ctx) error {
 		mimeType := http.DetectContentType(fileData)
 		base64Data := "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(fileData)
 		_, err = h.DB.Pool.Exec(ctx,
-			`INSERT INTO receipts (id, organization_id, user_id, file_path, file_url, file_name, file_hash, status, currency, line_items, is_billable, is_reimbursable, needs_review, source, raw_extraction, user_corrections, updated_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', 'USD', '[]'::jsonb, false, false, false, 'email', '{}'::jsonb, '{}'::jsonb, NOW())`,
+			`INSERT INTO receipts (id, organization_id, user_id, file_path, file_url, file_name, file_hash, status, processing_state, currency, line_items, is_billable, is_reimbursable, needs_review, source, raw_extraction, user_corrections, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', 'queued', 'USD', '[]'::jsonb, false, false, false, 'email', '{}'::jsonb, '{}'::jsonb, NOW())`,
 			receiptID, orgID, userID, filePath, base64Data, att.Filename, fileHash,
 		)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to insert receipt from email")
 			continue
 		}
+		_, _ = h.DB.Pool.Exec(ctx,
+			`INSERT INTO storage_objects (id, organization_id, receipt_id, path, file_hash, size_bytes, content_type)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7)
+			 ON CONFLICT (path) DO NOTHING`,
+			uuid.NewString(), orgID, receiptID, filePath, fileHash, len(fileData), mimeType,
+		)
 		h.invalidateCache(ctx, orgID)
 
 		err = h.QueueService.Enqueue(ctx, "process_receipt", map[string]interface{}{
@@ -151,6 +169,14 @@ func (h *EmailHandler) Inbound(c *fiber.Ctx) error {
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to enqueue email receipt job")
 			continue
+		}
+		_, _ = h.DB.Pool.Exec(ctx,
+			`INSERT INTO receipt_processing_jobs (id, receipt_id, organization_id, processing_state)
+			 VALUES ($1, $2, $3, 'queued')`,
+			uuid.NewString(), receiptID, orgID,
+		)
+		if h.AuditService != nil {
+			h.AuditService.Log(ctx, orgID, userID, "receipt.email_received", "receipt", receiptID, c.IP(), c.Get("User-Agent"), "{}")
 		}
 
 		processedCount++
