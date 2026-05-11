@@ -112,6 +112,7 @@ func RunMigrations(ctx context.Context, db *Database) error {
 		`CREATE INDEX IF NOT EXISTS idx_accountant_clients_client ON accountant_clients(client_organization_id) WHERE deleted_at IS NULL`,
 		`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE`,
 		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE`,
+		`ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE`,
 		`ALTER TABLE organizations ADD COLUMN IF NOT EXISTS slug TEXT NOT NULL DEFAULT 'temp'`,
 		`ALTER TABLE organizations DROP CONSTRAINT IF EXISTS organizations_slug_key`,
 		`ALTER TABLE organizations ADD CONSTRAINT organizations_slug_key UNIQUE (slug)`,
@@ -161,7 +162,6 @@ func RunMigrations(ctx context.Context, db *Database) error {
 		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS final_confidence DOUBLE PRECISION NOT NULL DEFAULT 0`,
 		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMP WITH TIME ZONE`,
 		`ALTER TABLE receipts ADD COLUMN IF NOT EXISTS processing_finished_at TIMESTAMP WITH TIME ZONE`,
-		`ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE`,
 		`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()`,
 		`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()`,
 		`CREATE TABLE IF NOT EXISTS rule_learning_events (
