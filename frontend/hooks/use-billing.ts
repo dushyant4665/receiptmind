@@ -11,6 +11,19 @@ export type BillingStatus = {
   can_upload: boolean;
   stripe_customer_id: string;
   has_subscription: boolean;
+  upgrade_reason: string;
+};
+
+export type BillingPlan = {
+  id: "free" | "pro" | "accountant";
+  name: string;
+  price: number;
+  interval: string;
+  audience: string;
+  quota: number;
+  cta: string;
+  features: string[];
+  positioning: string;
 };
 
 const fallbackStatus: BillingStatus = {
@@ -20,6 +33,7 @@ const fallbackStatus: BillingStatus = {
   can_upload: true,
   stripe_customer_id: "",
   has_subscription: false,
+  upgrade_reason: "",
 };
 
 export function useBillingStatus() {
@@ -38,6 +52,14 @@ export function useBillingStatus() {
       }
     },
     placeholderData: fallbackStatus,
+  });
+}
+
+export function useBillingPlans() {
+  return useQuery({
+    queryKey: ["billing-plans"],
+    staleTime: 60_000,
+    queryFn: () => getApiData<BillingPlan[]>("/billing/plans"),
   });
 }
 

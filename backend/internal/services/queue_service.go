@@ -13,6 +13,8 @@ import (
 
 const (
 	queueKey          = "receiptmind:jobs"
+	highQueueKey      = "receiptmind:jobs:high"
+	lowQueueKey       = "receiptmind:jobs:low"
 	delayedQueueKey   = "receiptmind:jobs:delayed"
 	deadLetterKey     = "receiptmind:dead_jobs"
 	idempotencyPrefix = "receiptmind:job:idempotency:"
@@ -27,6 +29,7 @@ type QueueJob struct {
 	IdempotencyKey string                 `json:"idempotency_key,omitempty"`
 	CreatedAt      time.Time              `json:"created_at"`
 	LastError      string                 `json:"last_error,omitempty"`
+	Priority       string                 `json:"priority,omitempty"`
 }
 
 type QueueService struct {
@@ -38,6 +41,10 @@ func NewQueueService(redisClient *redis.Client) *QueueService {
 }
 
 func (q *QueueService) Enqueue(ctx context.Context, jobType string, payload map[string]interface{}) error {
+	return q.EnqueueWithPriority(ctx, jobType, payload, "default")
+}
+
+func (q *QueueService) EnqueueWithPriority(ctx context.Context, jobType string, payload map[string]interface{}, priority string) error {
 	job := QueueJob{
 		ID:          uuid.NewString(),
 		Type:        jobType,
@@ -45,6 +52,7 @@ func (q *QueueService) Enqueue(ctx context.Context, jobType string, payload map[
 		Attempts:    0,
 		MaxAttempts: 3,
 		CreatedAt:   time.Now().UTC(),
+		Priority:    normalizePriority(priority),
 	}
 	if idempotencyKey, ok := payload["idempotency_key"].(string); ok {
 		job.IdempotencyKey = idempotencyKey
@@ -62,6 +70,7 @@ func (q *QueueService) EnqueueJob(ctx context.Context, job *QueueJob) error {
 	if job.CreatedAt.IsZero() {
 		job.CreatedAt = time.Now().UTC()
 	}
+	job.Priority = normalizePriority(job.Priority)
 
 	if job.IdempotencyKey != "" {
 		ok, err := q.client.SetNX(ctx, idempotencyPrefix+job.IdempotencyKey, job.ID, 24*time.Hour).Result()
@@ -81,9 +90,9 @@ func (q *QueueService) EnqueueJob(ctx context.Context, job *QueueJob) error {
 
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
-		lastErr = q.client.LPush(ctx, queueKey, data).Err()
+		lastErr = q.client.LPush(ctx, q.queueKeyForPriority(job.Priority), data).Err()
 		if lastErr == nil {
-			log.Info().Str("job_id", job.ID).Str("type", job.Type).Msg("Job enqueued")
+			log.Info().Str("job_id", job.ID).Str("type", job.Type).Str("priority", job.Priority).Msg("Job enqueued")
 			return nil
 		}
 		log.Warn().Err(lastErr).Int("attempt", attempt).Msg("Enqueue failed, retrying")
@@ -132,7 +141,7 @@ func (q *QueueService) Dequeue(ctx context.Context) (*QueueJob, error) {
 		log.Warn().Err(err).Msg("Failed to promote delayed jobs")
 	}
 
-	result, err := q.client.BRPop(ctx, 5*time.Second, queueKey).Result()
+	result, err := q.client.BRPop(ctx, 5*time.Second, highQueueKey, queueKey, lowQueueKey).Result()
 	if err != nil {
 		return nil, fmt.Errorf("failed to pop job from queue: %w", err)
 	}
@@ -163,7 +172,12 @@ func (q *QueueService) promoteDueJobs(ctx context.Context) error {
 	for _, item := range items {
 		pipe := q.client.TxPipeline()
 		pipe.ZRem(ctx, delayedQueueKey, item)
-		pipe.LPush(ctx, queueKey, item)
+		targetQueue := queueKey
+		var job QueueJob
+		if err := json.Unmarshal([]byte(item), &job); err == nil {
+			targetQueue = q.queueKeyForPriority(job.Priority)
+		}
+		pipe.LPush(ctx, targetQueue, item)
 		if _, err := pipe.Exec(ctx); err != nil {
 			return err
 		}
@@ -172,7 +186,22 @@ func (q *QueueService) promoteDueJobs(ctx context.Context) error {
 }
 
 func (q *QueueService) QueueSize(ctx context.Context) (int64, error) {
-	return q.client.LLen(ctx, queueKey).Result()
+	sizes, err := q.PriorityQueueSizes(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return sizes["high"] + sizes["default"] + sizes["low"], nil
+}
+
+func (q *QueueService) PriorityQueueSizes(ctx context.Context) (map[string]int64, error) {
+	pipe := q.client.Pipeline()
+	high := pipe.LLen(ctx, highQueueKey)
+	standard := pipe.LLen(ctx, queueKey)
+	low := pipe.LLen(ctx, lowQueueKey)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return nil, err
+	}
+	return map[string]int64{"high": high.Val(), "default": standard.Val(), "low": low.Val()}, nil
 }
 
 func (q *QueueService) DeadLetterSize(ctx context.Context) (int64, error) {
@@ -181,4 +210,24 @@ func (q *QueueService) DeadLetterSize(ctx context.Context) (int64, error) {
 
 func (q *QueueService) DelayedQueueSize(ctx context.Context) (int64, error) {
 	return q.client.ZCard(ctx, delayedQueueKey).Result()
+}
+
+func (q *QueueService) queueKeyForPriority(priority string) string {
+	switch normalizePriority(priority) {
+	case "high":
+		return highQueueKey
+	case "low":
+		return lowQueueKey
+	default:
+		return queueKey
+	}
+}
+
+func normalizePriority(priority string) string {
+	switch priority {
+	case "high", "low":
+		return priority
+	default:
+		return "default"
+	}
 }

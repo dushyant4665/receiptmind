@@ -99,6 +99,7 @@ func (s *Server) setupRoutes() {
 	accountantHandler := handlers.NewAccountantHandler(s.DB)
 	bankHandler := handlers.NewBankHandler(s.DB, s.AuditService)
 	opsHandler := handlers.NewOpsHandler(s.DB, s.Redis.Client)
+	onboardingHandler := handlers.NewOnboardingHandler(s.DB)
 
 	s.App.Get("/health", healthHandler.Health)
 	s.App.Get("/ready", healthHandler.Ready)
@@ -133,6 +134,7 @@ func (s *Server) setupRoutes() {
 	receipts := s.App.Group("/receipts", middleware.AuthProtected(s.JWTService))
 	receipts.Post("/upload", middleware.RateLimit(s.Redis.Client, "upload", 10, 1*time.Minute), receiptHandler.Upload)
 	receipts.Get("/export/csv", exportHandler.ExportCSV)
+	receipts.Get("/exports/history", exportHandler.History)
 	receipts.Get("/:id", receiptHandler.GetReceipt)
 	receipts.Get("/", receiptHandler.ListReceipts)
 	receipts.Patch("/:id", receiptHandler.EditReceipt)
@@ -158,8 +160,10 @@ func (s *Server) setupRoutes() {
 	bank.Get("/transactions", bankHandler.ListTransactions)
 
 	s.App.Get("/dashboard", middleware.AuthProtected(s.JWTService), dashboardHandler.GetStats)
+	s.App.Get("/onboarding/status", middleware.AuthProtected(s.JWTService), onboardingHandler.Status)
 
 	s.App.Get("/billing/status", middleware.AuthProtected(s.JWTService), billingHandler.GetStatus)
+	s.App.Get("/billing/plans", billingHandler.GetPlans)
 	s.App.Post("/billing/checkout", middleware.AuthProtected(s.JWTService), billingHandler.CreateCheckout)
 	s.App.Post("/billing/webhook", billingHandler.StripeWebhook)
 	s.App.Post("/checkout", billingHandler.CreateCheckout)

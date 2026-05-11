@@ -160,12 +160,12 @@ func (h *EmailHandler) Inbound(c *fiber.Ctx) error {
 		)
 		h.invalidateCache(ctx, orgID)
 
-		err = h.QueueService.Enqueue(ctx, "process_receipt", map[string]interface{}{
+		err = h.QueueService.EnqueueWithPriority(ctx, "process_receipt", map[string]interface{}{
 			"receipt_id":      receiptID,
 			"file_url":        filePath,
 			"org_id":          orgID,
 			"idempotency_key": fmt.Sprintf("email:%s:%s", req.MessageID, fileHash),
-		})
+		}, "high")
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to enqueue email receipt job")
 			continue

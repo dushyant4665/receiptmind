@@ -16,40 +16,39 @@ const plans = {
       featured: false,
       features: [
         { label: "10 receipts/month", included: true },
-        { label: "Manual upload only", included: true },
+        { label: "Email forwarding", included: true },
+        { label: "Google Sheets sync", included: true },
         { label: "CSV export", included: true },
-        { label: "Email support", included: true },
       ],
     },
     {
       name: "Pro",
-      price: "$29",
+      price: "$19",
       period: "/month",
-      description: "For serious freelancers",
-      cta: "Start free trial",
+      description: "For freelancers and small teams",
+      cta: "Continue automation",
       featured: true,
       features: [
         { label: "Unlimited receipts", included: true },
-        { label: "Gmail auto-fetch", included: true },
-        { label: "QuickBooks integration", included: true },
-        { label: "Priority support", included: true },
-        { label: "Analytics dashboard", included: true },
+        { label: "Daily digest emails", included: true },
+        { label: "Advanced rule learning", included: true },
+        { label: "Accountant-ready exports", included: true },
+        { label: "Priority processing", included: true },
       ],
     },
     {
-      name: "Enterprise",
-      price: "$99",
+      name: "Accountant",
+      price: "$79",
       period: "/month",
-      description: "For teams and businesses",
+      description: "For bookkeepers and CA firms",
       cta: "Contact Sales",
       featured: false,
       features: [
         { label: "Everything in Pro", included: true },
-        { label: "Multi-user access", included: true },
-        { label: "API access", included: true },
-        { label: "SLA guarantee", included: true },
-        { label: "Custom onboarding", included: true },
-        { label: "SSO/SAML", included: true },
+        { label: "Multi-client workspace", included: true },
+        { label: "Exception review queues", included: true },
+        { label: "Audit logs", included: true },
+        { label: "Client exports", included: true },
       ],
     },
   ],
@@ -63,40 +62,39 @@ const plans = {
       featured: false,
       features: [
         { label: "10 receipts/month", included: true },
-        { label: "Manual upload only", included: true },
+        { label: "Email forwarding", included: true },
+        { label: "Google Sheets sync", included: true },
         { label: "CSV export", included: true },
-        { label: "Email support", included: true },
       ],
     },
     {
       name: "Pro",
-      price: "$290",
+      price: "$190",
       period: "/year",
-      description: "For serious freelancers",
-      cta: "Start free trial",
+      description: "For freelancers and small teams",
+      cta: "Continue automation",
       featured: true,
       features: [
         { label: "Unlimited receipts", included: true },
-        { label: "Gmail auto-fetch", included: true },
-        { label: "QuickBooks integration", included: true },
-        { label: "Priority support", included: true },
-        { label: "Analytics dashboard", included: true },
+        { label: "Daily digest emails", included: true },
+        { label: "Advanced rule learning", included: true },
+        { label: "Accountant-ready exports", included: true },
+        { label: "Priority processing", included: true },
       ],
     },
     {
-      name: "Enterprise",
-      price: "$990",
+      name: "Accountant",
+      price: "$790",
       period: "/year",
-      description: "For teams and businesses",
+      description: "For bookkeepers and CA firms",
       cta: "Contact Sales",
       featured: false,
       features: [
         { label: "Everything in Pro", included: true },
-        { label: "Multi-user access", included: true },
-        { label: "API access", included: true },
-        { label: "SLA guarantee", included: true },
-        { label: "Custom onboarding", included: true },
-        { label: "SSO/SAML", included: true },
+        { label: "Multi-client workspace", included: true },
+        { label: "Exception review queues", included: true },
+        { label: "Audit logs", included: true },
+        { label: "Client exports", included: true },
       ],
     },
   ],
@@ -114,10 +112,10 @@ export function PricingSection() {
             Pricing
           </p>
           <h2 className="mt-5 font-heading text-[36px] leading-[1.12] tracking-[-0.2px] text-text-primary">
-            Simple, transparent pricing
+            Pricing for bookkeeping automation
           </h2>
           <p className="mt-3 text-[15px] leading-[1.65] text-text-muted">
-            Start free, scale when you need automation, and move to enterprise controls when your team grows.
+            Start free, then pay when ReceiptMind is already removing recurring bookkeeping work.
           </p>
         </div>
 
@@ -196,7 +194,7 @@ export function PricingSection() {
                 className="mt-5 w-full"
                 asChild
               >
-                <Link href={plan.name === "Enterprise" ? "/contact" : "/signup"}>{plan.cta}</Link>
+                <Link href={plan.name === "Accountant" ? "/contact" : "/signup"}>{plan.cta}</Link>
               </Button>
             </article>
           ))}

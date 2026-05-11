@@ -2,9 +2,11 @@
 
 import { useMemo } from "react";
 import { useExpenses } from "@/hooks/use-expenses";
+import { useExportHistory } from "@/hooks/use-export-history";
 
 export default function ReportsPage() {
   const { data } = useExpenses();
+  const { data: exportHistory = [] } = useExportHistory();
 
   const spendByCategory = useMemo(() => {
     const map = new Map<string, number>();
@@ -40,6 +42,25 @@ export default function ReportsPage() {
         <h1 className="text-[24px] font-heading text-text-primary tracking-tight">Reports</h1>
         <p className="mt-1 text-[13px] text-text-muted">Financial intelligence and spend analytics</p>
       </div>
+      <section className="rounded-lg border border-border-default bg-white p-5 shadow-xs">
+        <h2 className="text-[13px] font-semibold text-text-primary">Export history</h2>
+        <p className="mt-1 text-[12px] text-text-muted">Every accountant export is logged for trust and review.</p>
+        <div className="mt-4 space-y-2">
+          {exportHistory.length > 0 ? (
+            exportHistory.slice(0, 5).map((item) => (
+              <div key={item.id} className="flex items-center justify-between rounded-lg border border-border-subtle bg-bg-page px-4 py-2.5">
+                <div>
+                  <p className="text-[12px] font-medium text-text-primary">{item.file_name || `${item.export_type.toUpperCase()} export`}</p>
+                  <p className="text-[11px] text-text-muted">{new Date(item.created_at).toLocaleString()}</p>
+                </div>
+                <span className="text-[12px] text-text-secondary tabular-nums">{item.row_count} rows</span>
+              </div>
+            ))
+          ) : (
+            <p className="text-[12px] text-text-muted">No exports yet.</p>
+          )}
+        </div>
+      </section>
       <section className="rounded-lg border border-border-default bg-white p-5 shadow-xs">
         <h2 className="text-[13px] font-semibold text-text-primary">Spend by category</h2>
         <div className="mt-6 flex items-end gap-4">

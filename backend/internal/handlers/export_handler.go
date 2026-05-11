@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
 	"receiptmind-backend/internal/database"
@@ -31,9 +33,17 @@ func (h *ExportHandler) ExportCSV(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(string)
 
 	ctx := context.Background()
+	exportID := uuid.NewString()
+	filename := fmt.Sprintf("receipts_%s.csv", time.Now().Format("2006-01-02"))
+	filtersJSON, _ := json.Marshal(fiber.Map{"start_date": startDate, "end_date": endDate, "status": status})
 	if h.AuditService != nil {
-		h.AuditService.Log(ctx, orgID, userID, "receipts.exported", "export", "", c.IP(), c.Get("User-Agent"), "{}")
+		h.AuditService.Log(ctx, orgID, userID, "receipts.exported", "export", exportID, c.IP(), c.Get("User-Agent"), string(filtersJSON))
 	}
+	_, _ = h.DB.Pool.Exec(ctx,
+		`INSERT INTO export_history (id, organization_id, user_id, export_type, filters, file_name)
+		 VALUES ($1, $2, $3, 'csv', $4::jsonb, $5)`,
+		exportID, orgID, userID, string(filtersJSON), filename,
+	)
 
 	query := `SELECT
 				id,
@@ -128,7 +138,6 @@ func (h *ExportHandler) ExportCSV(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusInternalServerError, "internal server error")
 	}
 
-	filename := fmt.Sprintf("receipts_%s.csv", time.Now().Format("2006-01-02"))
 	c.Set("Content-Type", "text/csv")
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
 	c.Set("Transfer-Encoding", "chunked")
@@ -153,6 +162,7 @@ func (h *ExportHandler) ExportCSV(c *fiber.Ctx) error {
 			"Updated At",
 		})
 
+		rowCount := 0
 		for rows.Next() {
 			var id string
 			var vendor string
@@ -202,12 +212,45 @@ func (h *ExportHandler) ExportCSV(c *fiber.Ctx) error {
 				excelSafeDateTime(createdAt),
 				excelSafeDateTime(updatedAt),
 			})
+			rowCount++
 		}
+		_, _ = h.DB.Pool.Exec(context.Background(), "UPDATE export_history SET row_count = $1 WHERE id = $2", rowCount, exportID)
 		csvWriter.Flush()
 		w.Flush()
 	})
 
 	return nil
+}
+
+func (h *ExportHandler) History(c *fiber.Ctx) error {
+	orgID := c.Locals("organization_id").(string)
+	ctx := context.Background()
+	rows, err := h.DB.Pool.Query(ctx,
+		`SELECT id, export_type, filters, row_count, COALESCE(file_name, ''), created_at
+		 FROM export_history
+		 WHERE organization_id = $1
+		 ORDER BY created_at DESC
+		 LIMIT 50`,
+		orgID,
+	)
+	if err != nil {
+		return SendError(c, fiber.StatusInternalServerError, "failed to load export history")
+	}
+	defer rows.Close()
+	items := make([]fiber.Map, 0)
+	for rows.Next() {
+		var id, exportType, filters, fileName string
+		var rowCount int
+		var createdAt time.Time
+		if err := rows.Scan(&id, &exportType, &filters, &rowCount, &fileName, &createdAt); err != nil {
+			continue
+		}
+		items = append(items, fiber.Map{
+			"id": id, "export_type": exportType, "filters": json.RawMessage(filters),
+			"row_count": rowCount, "file_name": fileName, "created_at": createdAt.Format(time.RFC3339),
+		})
+	}
+	return c.JSON(SuccessResponse(items))
 }
 
 func excelSafeDate(t time.Time) string {

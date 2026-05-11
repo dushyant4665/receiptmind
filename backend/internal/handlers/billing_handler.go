@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -93,6 +94,7 @@ type BillingStatus struct {
 	CanUpload             bool   `json:"can_upload"`
 	StripeCustomerID      string `json:"stripe_customer_id"`
 	HasSubscription       bool   `json:"has_subscription"`
+	UpgradeReason         string `json:"upgrade_reason"`
 }
 
 type CheckoutRequest struct {
@@ -105,12 +107,10 @@ func (h *BillingHandler) GetStatus(c *fiber.Ctx) error {
 
 	var count int
 	err := h.DB.Pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM receipts
-		 WHERE organization_id = $1 AND created_at >= DATE_TRUNC('month', NOW())`,
+		`SELECT receipts_processed FROM usage_tracking WHERE organization_id = $1 AND month = TO_CHAR(NOW() AT TIME ZONE 'UTC', 'YYYY-MM')`,
 		orgID,
 	).Scan(&count)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to count receipts for billing")
 		count = 0
 	}
 
@@ -138,9 +138,55 @@ func (h *BillingHandler) GetStatus(c *fiber.Ctx) error {
 	if status.HasSubscription && status.Plan != "free" {
 		status.ReceiptLimit = 0
 		status.CanUpload = true
+	} else if count >= limit {
+		status.UpgradeReason = "Your bookkeeping automation has proven value. Upgrade to keep processing unlimited receipts."
+	} else if count >= int(float64(limit)*0.8) {
+		status.UpgradeReason = "You are close to your free automation limit."
 	}
 
 	return c.JSON(SuccessResponse(status))
+}
+
+func (h *BillingHandler) GetPlans(c *fiber.Ctx) error {
+	limit := h.Config.FreePlanReceiptLimit
+	if limit <= 0 {
+		limit = 10
+	}
+	return c.JSON(SuccessResponse([]fiber.Map{
+		{
+			"id":          "free",
+			"name":        "Free",
+			"price":       0,
+			"interval":    "month",
+			"audience":    "Try automated bookkeeping",
+			"quota":       limit,
+			"cta":         "Start free",
+			"features":    []string{fmt.Sprintf("%d receipts/month", limit), "Email forwarding", "Google Sheets sync", "CSV export", "Basic rule learning"},
+			"positioning": "Proves the workflow before asking for payment.",
+		},
+		{
+			"id":          "pro",
+			"name":        "Pro",
+			"price":       19,
+			"interval":    "month",
+			"audience":    "Freelancers and small businesses",
+			"quota":       0,
+			"cta":         "Continue automation",
+			"features":    []string{"Unlimited receipts", "Daily digest", "Advanced rules", "Google Sheets auto-sync", "Accountant-ready exports"},
+			"positioning": "Pay to remove recurring bookkeeping work.",
+		},
+		{
+			"id":          "accountant",
+			"name":        "Accountant",
+			"price":       79,
+			"interval":    "month",
+			"audience":    "CA firms and bookkeepers",
+			"quota":       0,
+			"cta":         "Build client workflow",
+			"features":    []string{"Multi-client workspace", "Exception review queues", "Audit logs", "Client exports", "Priority processing"},
+			"positioning": "Turns accountants into a distribution channel.",
+		},
+	}))
 }
 
 func (h *BillingHandler) CreateCheckout(c *fiber.Ctx) error {

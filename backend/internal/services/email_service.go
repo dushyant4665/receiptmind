@@ -47,7 +47,8 @@ func (s *EmailService) SendQuotaExhausted(ctx context.Context, to string) error 
 }
 
 func (s *EmailService) SendDailyDigest(ctx context.Context, to string, processed int, total float64, exceptions int) error {
-	body := premiumEmail("Your books updated today", fmt.Sprintf("%d receipts processed, %.2f categorized, %d items need review.", processed, total, exceptions), "Open Dashboard", s.cfg.AppURL+"/dashboard")
+	minutesSaved := processed * 5
+	body := premiumEmail("Your books updated today", fmt.Sprintf("%d receipts processed, %.2f categorized, %d items need review. About %d minutes of manual work avoided.", processed, total, exceptions, minutesSaved), "Review only what matters", s.cfg.AppURL+"/exceptions")
 	return s.send(ctx, to, "ReceiptMind daily summary", body)
 }
 

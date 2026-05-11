@@ -144,7 +144,7 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 		"org_id":          orgID,
 		"idempotency_key": fmt.Sprintf("receipt:%s", receiptID),
 	}
-	if err := h.QueueService.Enqueue(ctx, "process_receipt", queuePayload); err != nil {
+	if err := h.QueueService.EnqueueWithPriority(ctx, "process_receipt", queuePayload, "high"); err != nil {
 		log.Error().Err(err).Str("receipt_id", receiptID).Msg("Failed to enqueue receipt processing job")
 		return SendError(c, fiber.StatusServiceUnavailable, "receipt saved but processing queue is unavailable")
 	}

@@ -35,6 +35,25 @@ export default function OpsPage() {
         </p>
         <p className="mt-3 text-[12px] text-text-ghost">Last checked: {data?.checked_at ? new Date(data.checked_at).toLocaleString() : "waiting for data"}</p>
       </div>
+
+      <div className="rounded-lg border border-border-default bg-white p-4">
+        <p className="text-sm font-semibold">Priority queues</p>
+        <p className="mt-1 text-[13px] text-text-muted">Uploads and email receipts run high priority; background automation can wait when traffic spikes.</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <QueuePill label="High" value={data?.queue_high ?? 0} />
+          <QueuePill label="Default" value={data?.queue_default ?? 0} />
+          <QueuePill label="Low" value={data?.queue_low ?? 0} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QueuePill({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-border-subtle bg-bg-page px-3 py-2">
+      <p className="text-[11px] font-bold uppercase tracking-widest text-text-ghost">{label}</p>
+      <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
     </div>
   );
 }

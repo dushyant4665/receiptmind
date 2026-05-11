@@ -34,12 +34,34 @@ func (s *QuotaService) FreeLimit() int {
 
 func (s *QuotaService) CanProcess(ctx context.Context, orgID string) (bool, int, int) {
 	limit := s.FreeLimit()
+	if s.hasUnlimitedPlan(ctx, orgID) {
+		return true, s.currentUsage(ctx, orgID), 0
+	}
+	count := s.currentUsage(ctx, orgID)
+	return count < limit, count, limit
+}
+
+func (s *QuotaService) currentUsage(ctx context.Context, orgID string) int {
 	var count int
 	_ = s.db.Pool.QueryRow(ctx,
 		`SELECT receipts_processed FROM usage_tracking WHERE organization_id = $1 AND month = $2`,
 		orgID, quotaMonth(time.Now()),
 	).Scan(&count)
-	return count < limit, count, limit
+	return count
+}
+
+func (s *QuotaService) hasUnlimitedPlan(ctx context.Context, orgID string) bool {
+	var plan string
+	var active bool
+	_ = s.db.Pool.QueryRow(ctx,
+		`SELECT plan, status IN ('active', 'trialing')
+		 FROM subscriptions
+		 WHERE organization_id = $1 AND deleted_at IS NULL
+		 ORDER BY updated_at DESC
+		 LIMIT 1`,
+		orgID,
+	).Scan(&plan, &active)
+	return active && plan != "" && plan != "free"
 }
 
 func (s *QuotaService) IncrementProcessed(ctx context.Context, orgID string) {
@@ -59,6 +81,9 @@ func (s *QuotaService) IncrementProcessed(ctx context.Context, orgID string) {
 }
 
 func (s *QuotaService) sendThresholdEmails(ctx context.Context, orgID, month string) {
+	if s.hasUnlimitedPlan(ctx, orgID) {
+		return
+	}
 	limit := s.FreeLimit()
 	var count int
 	var email string
