@@ -26,6 +26,11 @@ type Config struct {
 	WorkerConcurrency int
 	RequestTimeout    time.Duration
 	AppURL            string
+	SMTPHost          string
+	SMTPPort          int
+	SMTPUser          string
+	SMTPPass          string
+	SMTPFrom          string
 }
 
 func Load() *Config {
@@ -52,6 +57,11 @@ func Load() *Config {
 		WorkerConcurrency: getEnvInt("WORKER_CONCURRENCY", 5),
 		RequestTimeout:    time.Duration(getEnvInt("REQUEST_TIMEOUT_SECONDS", 10)) * time.Second,
 		AppURL:            getEnv("APP_URL", getEnv("FRONTEND_URL", "http://localhost:3000")),
+		SMTPHost:          getEnv("SMTP_HOST", "smtp.gmail.com"),
+		SMTPPort:          getEnvInt("SMTP_PORT", 587),
+		SMTPUser:          getEnv("SMTP_USERNAME", ""),
+		SMTPPass:          getEnv("SMTP_PASSWORD", ""),
+		SMTPFrom:          getEnv("SMTP_FROM", "ReceiptMind <noreply@receiptmind.com>"),
 	}
 
 	if cfg.GeminiKey != "" {
