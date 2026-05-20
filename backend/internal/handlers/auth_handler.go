@@ -65,6 +65,7 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 
 	ctx := context.Background()
 
+	// Check if user already exists in permanent table
 	var existingID string
 	err := h.DB.Pool.QueryRow(ctx, "SELECT id FROM users WHERE email = $1", req.Email).Scan(&existingID)
 	if err == nil {
@@ -77,54 +78,36 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusInternalServerError, "internal server error")
 	}
 
-	tx, err := h.DB.Pool.Begin(ctx)
-	if err != nil {
-		return SendError(c, fiber.StatusInternalServerError, "failed to start transaction")
-	}
-	defer tx.Rollback(ctx)
-
-	orgID := uuid.New().String()
-	slug := utils.GenerateSlug(req.OrganizationName) + "-" + strings.ToLower(uuid.New().String()[:4])
-	_, err = tx.Exec(ctx, "INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)", orgID, req.OrganizationName, slug)
-	if err != nil {
-		return SendError(c, fiber.StatusInternalServerError, "failed to create organization")
-	}
-
-	userID := uuid.New().String()
-	_, err = tx.Exec(ctx,
-		"INSERT INTO users (id, email, password_hash, organization_id, status, email_verified_at) VALUES ($1, $2, $3, $4, 'pending', NULL)",
-		userID, req.Email, hashedPassword, orgID,
-	)
-	if err != nil {
-		return SendError(c, fiber.StatusInternalServerError, "failed to create user")
-	}
-
 	// Generate verification token
 	token := uuid.New().String()
 	hash := sha256.Sum256([]byte(token))
 	tokenHash := hex.EncodeToString(hash[:])
 
-	_, err = tx.Exec(ctx,
-		"INSERT INTO verification_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
-		uuid.New().String(), userID, tokenHash, time.Now().Add(24*time.Hour),
+	// Save to pending_registrations (upsert if already exists)
+	_, err = h.DB.Pool.Exec(ctx,
+		`INSERT INTO pending_registrations (id, email, password_hash, organization_name, token_hash, expires_at) 
+		 VALUES ($1, $2, $3, $4, $5, $6)
+		 ON CONFLICT (email) DO UPDATE SET 
+		 password_hash = EXCLUDED.password_hash, 
+		 organization_name = EXCLUDED.organization_name, 
+		 token_hash = EXCLUDED.token_hash, 
+		 expires_at = EXCLUDED.expires_at`,
+		uuid.New().String(), req.Email, hashedPassword, req.OrganizationName, tokenHash, time.Now().Add(24*time.Hour),
 	)
 	if err != nil {
-		return SendError(c, fiber.StatusInternalServerError, "failed to create verification token")
+		log.Error().Err(err).Msg("Failed to save pending registration")
+		return SendError(c, fiber.StatusInternalServerError, "failed to initiate registration")
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return SendError(c, fiber.StatusInternalServerError, "failed to commit transaction")
+	// Send verification email (not in goroutine to ensure it finishes or errors)
+	err = h.EmailService.SendVerificationEmail(req.Email, token)
+	if err != nil {
+		log.Error().Err(err).Str("email", req.Email).Msg("CRITICAL: Failed to send verification email during signup")
+		return SendError(c, fiber.StatusInternalServerError, "failed to send verification email, please try again")
 	}
-
-	// Send verification email
-	go func() {
-		if err := h.EmailService.SendVerificationEmail(req.Email, token); err != nil {
-			log.Error().Err(err).Msg("Failed to send verification email")
-		}
-	}()
 
 	return c.JSON(SuccessResponse(fiber.Map{
-		"message": "Registration successful. Please check your email to verify your account.",
+		"message": "Registration initiated. Please check your email to verify and complete your account setup.",
 		"email":   req.Email,
 	}))
 }
@@ -366,17 +349,24 @@ func (h *AuthHandler) VerifyEmail(c *fiber.Ctx) error {
 	tokenHash := hex.EncodeToString(hash[:])
 
 	ctx := context.Background()
-	var userID string
+	var pending struct {
+		Email            string
+		PasswordHash     string
+		OrganizationName string
+	}
+
 	err := h.DB.Pool.QueryRow(ctx,
-		`SELECT user_id FROM verification_tokens 
-		 WHERE token_hash = $1 AND expires_at > NOW() AND used_at IS NULL`,
+		`SELECT email, password_hash, organization_name FROM pending_registrations 
+		 WHERE token_hash = $1 AND expires_at > NOW()`,
 		tokenHash,
-	).Scan(&userID)
+	).Scan(&pending.Email, &pending.PasswordHash, &pending.OrganizationName)
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
+			log.Warn().Str("token_hash", tokenHash).Msg("Invalid or expired verification token used")
 			return SendError(c, fiber.StatusBadRequest, "invalid or expired token")
 		}
+		log.Error().Err(err).Msg("Failed to query pending registrations")
 		return SendError(c, fiber.StatusInternalServerError, "internal server error")
 	}
 
@@ -386,30 +376,41 @@ func (h *AuthHandler) VerifyEmail(c *fiber.Ctx) error {
 	}
 	defer tx.Rollback(ctx)
 
-	// Mark user as active
-	_, err = tx.Exec(ctx,
-		"UPDATE users SET status = 'active', email_verified_at = NOW() WHERE id = $1",
-		userID,
-	)
+	// Create Organization
+	orgID := uuid.New().String()
+	slug := utils.GenerateSlug(pending.OrganizationName) + "-" + strings.ToLower(uuid.New().String()[:4])
+	_, err = tx.Exec(ctx, "INSERT INTO organizations (id, name, slug) VALUES ($1, $2, $3)", orgID, pending.OrganizationName, slug)
 	if err != nil {
-		return SendError(c, fiber.StatusInternalServerError, "failed to update user status")
+		log.Error().Err(err).Msg("Failed to create organization during verification")
+		return SendError(c, fiber.StatusInternalServerError, "failed to create organization")
 	}
 
-	// Mark token as used
+	// Create User
+	userID := uuid.New().String()
 	_, err = tx.Exec(ctx,
-		"UPDATE verification_tokens SET used_at = NOW() WHERE token_hash = $1",
-		tokenHash,
+		"INSERT INTO users (id, email, password_hash, organization_id, status, email_verified_at) VALUES ($1, $2, $3, $4, 'active', NOW())",
+		userID, pending.Email, pending.PasswordHash, orgID,
 	)
 	if err != nil {
-		return SendError(c, fiber.StatusInternalServerError, "failed to update token")
+		log.Error().Err(err).Msg("Failed to create user during verification")
+		return SendError(c, fiber.StatusInternalServerError, "failed to create user")
+	}
+
+	// Delete pending registration
+	_, err = tx.Exec(ctx, "DELETE FROM pending_registrations WHERE email = $1", pending.Email)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to delete pending registration after verification")
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return SendError(c, fiber.StatusInternalServerError, "failed to commit transaction")
+		log.Error().Err(err).Msg("Failed to commit verification transaction")
+		return SendError(c, fiber.StatusInternalServerError, "failed to finalize verification")
 	}
 
-	return c.JSON(SuccessResponse(fiber.Map{"verified": true, "message": "Email verified successfully. You can now log in."}))
+	log.Info().Str("email", pending.Email).Msg("User verified and account created successfully")
+	return c.JSON(SuccessResponse(fiber.Map{"verified": true, "message": "Email verified successfully. Your account is now active, you can log in."}))
 }
+
 
 func (h *AuthHandler) ResendVerification(c *fiber.Ctx) error {
 	type ResendRequest struct {
@@ -425,40 +426,46 @@ func (h *AuthHandler) ResendVerification(c *fiber.Ctx) error {
 	}
 
 	ctx := context.Background()
-	var userID string
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+
+	// Check if already active
 	var status string
-	err := h.DB.Pool.QueryRow(ctx, "SELECT id, status FROM users WHERE email = $1", strings.ToLower(strings.TrimSpace(req.Email))).Scan(&userID, &status)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			// Don't reveal if email exists, but return success to avoid enumeration
-			return c.JSON(SuccessResponse(fiber.Map{"sent": true, "message": "If an account exists, a verification email has been sent."}))
-		}
-		return SendError(c, fiber.StatusInternalServerError, "internal server error")
+	err := h.DB.Pool.QueryRow(ctx, "SELECT status FROM users WHERE email = $1", req.Email).Scan(&status)
+	if err == nil && status == "active" {
+		return SendError(c, fiber.StatusBadRequest, "Email is already verified and account is active.")
 	}
 
-	if status == "active" {
-		return SendError(c, fiber.StatusBadRequest, "Email is already verified.")
+	// Find in pending
+	var tokenHash string
+	err = h.DB.Pool.QueryRow(ctx, "SELECT token_hash FROM pending_registrations WHERE email = $1", req.Email).Scan(&tokenHash)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return c.JSON(SuccessResponse(fiber.Map{"sent": true, "message": "If an account is pending, a verification email has been sent."}))
+		}
+		return SendError(c, fiber.StatusInternalServerError, "internal server error")
 	}
 
 	// Generate new verification token
 	token := uuid.New().String()
 	hash := sha256.Sum256([]byte(token))
-	tokenHash := hex.EncodeToString(hash[:])
+	newTokenHash := hex.EncodeToString(hash[:])
 
 	_, err = h.DB.Pool.Exec(ctx,
-		"INSERT INTO verification_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
-		uuid.New().String(), userID, tokenHash, time.Now().Add(24*time.Hour),
+		"UPDATE pending_registrations SET token_hash = $1, expires_at = $2 WHERE email = $3",
+		newTokenHash, time.Now().Add(24*time.Hour), req.Email,
 	)
 	if err != nil {
-		return SendError(c, fiber.StatusInternalServerError, "failed to create verification token")
+		log.Error().Err(err).Msg("Failed to update verification token")
+		return SendError(c, fiber.StatusInternalServerError, "internal server error")
 	}
 
 	// Send verification email
-	go func() {
-		if err := h.EmailService.SendVerificationEmail(req.Email, token); err != nil {
-			log.Error().Err(err).Msg("Failed to send verification email")
-		}
-	}()
+	err = h.EmailService.SendVerificationEmail(req.Email, token)
+	if err != nil {
+		log.Error().Err(err).Str("email", req.Email).Msg("Failed to resend verification email")
+		return SendError(c, fiber.StatusInternalServerError, "failed to send email")
+	}
 
 	return c.JSON(SuccessResponse(fiber.Map{"sent": true, "message": "Verification email sent. Please check your inbox."}))
 }
+
