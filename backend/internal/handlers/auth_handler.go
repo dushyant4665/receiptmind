@@ -208,3 +208,13 @@ func (h *AuthHandler) LogoutAll(c *fiber.Ctx) error {
 	_, _ = h.DB.Pool.Exec(context.Background(), "UPDATE sessions SET revoked_at = NOW() WHERE user_id = $1", userID)
 	return c.JSON(SuccessResponse(fiber.Map{"logged_out_all": true}))
 }
+
+func (h *AuthHandler) VerifyEmail(c *fiber.Ctx) error {
+	// Since verification is bypassed for now, always return success
+	return c.JSON(SuccessResponse(fiber.Map{"verified": true}))
+}
+
+func (h *AuthHandler) ResendVerification(c *fiber.Ctx) error {
+	// Stub for resending verification email
+	return c.JSON(SuccessResponse(fiber.Map{"sent": true, "message": "Verification email sent (simulated)"}))
+}
