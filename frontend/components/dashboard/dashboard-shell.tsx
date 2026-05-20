@@ -31,7 +31,6 @@ const navigation = [
   { href: "/expenses", label: "Expenses", icon: CreditCard },
   { href: "/exceptions", label: "Exceptions", icon: AlertCircle, badge: 3 },
   { href: "/rules", label: "Rules", icon: Zap },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

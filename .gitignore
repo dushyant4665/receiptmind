@@ -15,3 +15,8 @@ frontend/*.tsbuildinfo
 # OS / editor
 .DS_Store
 Thumbs.db
+*.exe
+*.exe~
+*.log
+backend/uploads/**
+!backend/uploads/.gitkeep
