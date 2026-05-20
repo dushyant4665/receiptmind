@@ -27,7 +27,7 @@ export default function VerifyEmailPage() {
     postApiData<VerifyResponse>("/auth/verify-email", { token })
       .then(async () => {
         if (!active) return;
-        setState("Email verified. Opening dashboard...");
+        setState("Email verified. Redirecting to login...");
         toast.success("Email verified");
         router.push("/login");
       })

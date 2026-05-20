@@ -26,6 +26,7 @@ type Server struct {
 	ExceptionService *services.ExceptionService
 	RuleService      *services.RuleService
 	PDFService       *services.PDFService
+	EmailService     *services.EmailService
 }
 
 func New(cfg *config.Config, db *database.Database, redis *database.RedisClient) *Server {
@@ -57,6 +58,7 @@ func New(cfg *config.Config, db *database.Database, redis *database.RedisClient)
 	exceptionService := services.NewExceptionService(db)
 	ruleService := services.NewRuleService(db)
 	pdfService := services.NewPDFService()
+	emailService := services.NewEmailService(cfg)
 
 	srv := &Server{
 		App:              app,
@@ -70,6 +72,7 @@ func New(cfg *config.Config, db *database.Database, redis *database.RedisClient)
 		ExceptionService: exceptionService,
 		RuleService:      ruleService,
 		PDFService:       pdfService,
+		EmailService:     emailService,
 	}
 
 	srv.setupRoutes()
@@ -79,7 +82,7 @@ func New(cfg *config.Config, db *database.Database, redis *database.RedisClient)
 
 func (s *Server) setupRoutes() {
 	healthHandler := handlers.NewHealthHandler(s.DB, s.Redis)
-	authHandler := handlers.NewAuthHandler(s.DB, s.JWTService, s.Config)
+	authHandler := handlers.NewAuthHandler(s.DB, s.JWTService, s.EmailService, s.Config)
 	userHandler := handlers.NewUserHandler(s.DB)
 	receiptHandler := handlers.NewReceiptHandler(s.DB, s.Config, s.StorageService, s.QueueService, s.ExceptionService, s.RuleService, s.Redis.Client)
 	exceptionHandler := handlers.NewExceptionHandler(s.DB, s.ExceptionService, s.RuleService)
