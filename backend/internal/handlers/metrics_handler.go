@@ -2,57 +2,102 @@ package handlers
 
 import (
 	"context"
-	"sync/atomic"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog/log"
 
 	"receiptmind-backend/internal/database"
 )
 
 type MetricsHandler struct {
-	DB       *database.Database
-	Redis    *redis.Client
-	Requests int64
-	Errors   int64
+	DB *database.Database
 }
 
-func NewMetricsHandler(db *database.Database, redisClient *redis.Client) *MetricsHandler {
-	return &MetricsHandler{
-		DB:    db,
-		Redis: redisClient,
-	}
+func NewMetricsHandler(db *database.Database) *MetricsHandler {
+	return &MetricsHandler{DB: db}
 }
 
-func (m *MetricsHandler) IncrementRequests() {
-	atomic.AddInt64(&m.Requests, 1)
+type ProcessingTimeMetrics struct {
+	AverageSeconds float64          `json:"average_seconds"`
+	FastestSeconds float64          `json:"fastest_seconds"`
+	SlowestSeconds float64          `json:"slowest_seconds"`
+	RecentStats    []ProcessingStat `json:"recent_stats"`
 }
 
-func (m *MetricsHandler) IncrementErrors() {
-	atomic.AddInt64(&m.Errors, 1)
+type ProcessingStat struct {
+	ID              string  `json:"id"`
+	VendorName      string  `json:"vendor_name"`
+	DurationSeconds float64 `json:"duration_seconds"`
+	OCRTimeSeconds  float64 `json:"ocr_time_seconds,omitempty"`
+	AITimeSeconds   float64 `json:"ai_time_seconds,omitempty"`
 }
 
-func (m *MetricsHandler) GetMetrics(c *fiber.Ctx) error {
+type ProcessingMetricsResponse struct {
+	AverageSeconds float64 `json:"average_seconds"`
+	MinSeconds     float64 `json:"min_seconds"`
+	MaxSeconds     float64 `json:"max_seconds"`
+	Count          int     `json:"count"`
+}
+
+func (h *MetricsHandler) GetProcessingTimes(c *fiber.Ctx) error {
+	orgID := c.Locals("organization_id").(string)
 	ctx := context.Background()
 
-	requests := atomic.LoadInt64(&m.Requests)
-	errors := atomic.LoadInt64(&m.Errors)
+	query := `
+		SELECT 
+			EXTRACT(EPOCH FROM (processing_finished_at - processing_started_at)) as duration
+		FROM receipts 
+		WHERE organization_id = $1 
+		  AND status = 'processed' 
+		  AND processing_started_at IS NOT NULL 
+		  AND processing_finished_at IS NOT NULL
+		ORDER BY processing_finished_at DESC
+		LIMIT 30
+	`
 
-	queueSize, _ := m.Redis.LLen(ctx, "receiptmind:jobs").Result()
-	delayedQueueSize, _ := m.Redis.ZCard(ctx, "receiptmind:jobs:delayed").Result()
-	deadLetterSize, _ := m.Redis.LLen(ctx, "receiptmind:dead_jobs").Result()
+	rows, err := h.DB.Pool.Query(ctx, query, orgID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to query processing times")
+		return SendError(c, fiber.StatusInternalServerError, "internal server error")
+	}
+	defer rows.Close()
 
-	errorRate := float64(0)
-	if requests > 0 {
-		errorRate = float64(errors) / float64(requests) * 100
+	var totalDuration float64
+	var minDuration float64 = -1
+	var maxDuration float64 = 0
+	var count int
+
+	for rows.Next() {
+		var duration float64
+		if err := rows.Scan(&duration); err != nil {
+			continue
+		}
+
+		totalDuration += duration
+		if minDuration == -1 || duration < minDuration {
+			minDuration = duration
+		}
+		if duration > maxDuration {
+			maxDuration = duration
+		}
+		count++
 	}
 
-	return c.JSON(SuccessResponse(fiber.Map{
-		"request_count":      requests,
-		"error_count":        errors,
-		"error_rate_percent": errorRate,
-		"job_queue_size":     queueSize,
-		"delayed_queue_size": delayedQueueSize,
-		"dead_letter_size":   deadLetterSize,
+	if count == 0 {
+		return c.JSON(SuccessResponse(ProcessingMetricsResponse{
+			AverageSeconds: 0,
+			MinSeconds:     0,
+			MaxSeconds:     0,
+			Count:          0,
+		}))
+	}
+
+	avg := totalDuration / float64(count)
+
+	return c.JSON(SuccessResponse(ProcessingMetricsResponse{
+		AverageSeconds: avg,
+		MinSeconds:     minDuration,
+		MaxSeconds:     maxDuration,
+		Count:          count,
 	}))
 }

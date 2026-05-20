@@ -1,13 +1,22 @@
 "use client";
 
 import { useDashboardStats } from "@/hooks/use-dashboard";
-import { Receipt, DollarSign, CheckCircle2, Clock, AlertCircle } from "lucide-react";
+import { useProcessingMetrics } from "@/hooks/use-metrics";
+import { Receipt, DollarSign, CheckCircle2, Clock, AlertCircle, Zap, Timer, Gauge } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function MetricsGrid() {
   const { data, isLoading } = useDashboardStats();
+  const { data: metricsData, isLoading: isLoadingMetrics } = useProcessingMetrics();
+  
   const automationRate = data && data.totalReceipts > 0 ? Math.round((data.processedCount / data.totalReceipts) * 100) : 0;
   const timeSavedMinutes = data ? data.processedCount * 4 : 0;
+
+  const formatSeconds = (seconds: number) => {
+    if (seconds === 0) return "--";
+    if (seconds < 1) return `${(seconds * 1000).toFixed(0)}ms`;
+    return `${seconds.toFixed(1)}s`;
+  };
 
   const metrics = [
     {
@@ -27,20 +36,22 @@ export function MetricsGrid() {
       bar: "bg-emerald",
     },
     {
-      title: "Automation",
-      value: data ? `${automationRate}%` : "--",
-      icon: CheckCircle2,
-      color: "text-emerald",
-      bg: "bg-emerald-surface",
-      bar: "bg-emerald",
-    },
-    {
-      title: "Time Saved",
-      value: data ? `${Math.max(1, Math.round(timeSavedMinutes / 60))}h` : "--",
-      icon: Clock,
+      title: "Avg Process Time",
+      value: metricsData ? formatSeconds(metricsData.average_seconds) : "--",
+      icon: Timer,
       color: "text-amber",
       bg: "bg-amber-surface",
       bar: "bg-amber",
+      isLoading: isLoadingMetrics,
+    },
+    {
+      title: "Fastest / Slowest",
+      value: metricsData ? `${formatSeconds(metricsData.min_seconds)} / ${formatSeconds(metricsData.max_seconds)}` : "--",
+      icon: Gauge,
+      color: "text-purple",
+      bg: "bg-purple-surface",
+      bar: "bg-purple",
+      isLoading: isLoadingMetrics,
     },
     {
       title: "Needs Review",
@@ -67,13 +78,13 @@ export function MetricsGrid() {
               <p className="text-[10px] font-bold uppercase tracking-widest text-text-ghost">
                 {metric.title}
               </p>
-              <p className="mt-2 font-heading text-[26px] leading-none tracking-tight text-text-primary">
-                {isLoading ? (
-                  <span className="inline-block h-7 w-16 animate-pulse rounded-md bg-bg-subtle" />
+              <div className="mt-2 font-heading text-[22px] leading-none tracking-tight text-text-primary">
+                {isLoading || metric.isLoading ? (
+                  <span className="inline-block h-6 w-16 animate-pulse rounded-md bg-bg-subtle" />
                 ) : (
                   metric.value
                 )}
-              </p>
+              </div>
             </div>
             <div className={cn("flex size-8 items-center justify-center rounded-lg", metric.bg)}>
               <metric.icon className={cn("size-4", metric.color)} strokeWidth={2} />
@@ -82,7 +93,7 @@ export function MetricsGrid() {
           <div className="mt-3 h-[2px] w-full rounded-full bg-bg-subtle overflow-hidden">
             <div
               className={cn("h-full rounded-full transition-all duration-700", metric.bar)}
-              style={{ width: isLoading ? "0%" : "100%" }}
+              style={{ width: isLoading || metric.isLoading ? "0%" : "100%" }}
             />
           </div>
         </article>

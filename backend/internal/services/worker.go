@@ -23,14 +23,12 @@ type Worker struct {
 	exceptionService *ExceptionService
 	ruleService      *RuleService
 	storageService   *StorageService
-	sheetsService    *GoogleSheetsService
-	quotaService     *QuotaService
 	redis            *redis.Client
 	concurrency      int
 	aiLimiter        chan struct{}
 }
 
-func NewWorker(queue *QueueService, db *database.Database, aiSvc *AIService, exceptionSvc *ExceptionService, ruleSvc *RuleService, storageSvc *StorageService, sheetsSvc *GoogleSheetsService, quotaSvc *QuotaService, redisClient *redis.Client, concurrency int) *Worker {
+func NewWorker(queue *QueueService, db *database.Database, aiSvc *AIService, exceptionSvc *ExceptionService, ruleSvc *RuleService, storageSvc *StorageService, redisClient *redis.Client, concurrency int) *Worker {
 	if concurrency < 1 {
 		concurrency = 5
 	}
@@ -45,8 +43,6 @@ func NewWorker(queue *QueueService, db *database.Database, aiSvc *AIService, exc
 		exceptionService: exceptionSvc,
 		ruleService:      ruleSvc,
 		storageService:   storageSvc,
-		sheetsService:    sheetsSvc,
-		quotaService:     quotaSvc,
 		redis:            redisClient,
 		concurrency:      concurrency,
 		aiLimiter:        make(chan struct{}, aiConcurrency),
@@ -250,28 +246,6 @@ func (w *Worker) processReceipt(ctx context.Context, receiptID string, job *Queu
 		 WHERE receipt_id = $2 AND processing_state = 'processing'`,
 		newStatus, receiptID,
 	)
-
-	if w.sheetsService != nil && newStatus == "processed" {
-		date := extraction.ReceiptDate
-		if date == "" && parsedDate != nil {
-			date = parsedDate.Format("2006-01-02")
-		}
-		if err := w.sheetsService.SyncReceipt(ctx, SheetRow{
-			OrganizationID: receipt.OrganizationID,
-			Date:           date,
-			Vendor:         vendorName,
-			Amount:         amount,
-			Category:       category,
-			Status:         newStatus,
-			Notes:          "ReceiptMind auto-sync",
-		}); err != nil {
-			log.Error().Err(err).Str("receipt_id", receiptID).Msg("Google Sheets sync failed")
-		}
-	}
-
-	if w.quotaService != nil && newStatus == "processed" {
-		w.quotaService.IncrementProcessed(ctx, receipt.OrganizationID)
-	}
 
 	// Invalidate caches for this org
 	if w.redis != nil {

@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import { UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { UpgradeModal } from "@/components/billing/upgrade-modal";
 import { uploadApiData } from "@/lib/api-client";
 import { globalImageCache } from "@/lib/image-cache";
 import type { Receipt, ReceiptListResponse, LocalOptimisticReceipt } from "@/types";
@@ -64,7 +63,6 @@ export function UploadDropzone() {
   const [progress, setProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const handleUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) {
@@ -184,12 +182,7 @@ export function UploadDropzone() {
     } catch (error: unknown) {
       clearInterval(progressInterval);
       const err = error as { status?: number; message?: string };
-      if (err?.status === 402) {
-        setShowUpgradeModal(true);
-        toast.error("Free limit reached. Upgrade to continue.");
-      } else {
-        toast.error(err?.message || "Upload failed. Please try again.");
-      }
+      toast.error(err?.message || "Upload failed. Please try again.");
       setProgress(0);
       queryClient.setQueryData<Receipt[]>(["receipts", session.accessToken], (current) =>
         (current ?? []).filter((receipt) => !("isOptimistic" in receipt && (receipt as LocalOptimisticReceipt).isOptimistic)),
@@ -284,8 +277,6 @@ export function UploadDropzone() {
           Reset queue
         </Button>
       </div>
-
-      <UpgradeModal open={showUpgradeModal} onOpenChange={setShowUpgradeModal} />
     </section>
   );
 }

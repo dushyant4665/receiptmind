@@ -13,16 +13,14 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"receiptmind-backend/internal/database"
-	"receiptmind-backend/internal/services"
 )
 
 type ExportHandler struct {
-	DB           *database.Database
-	AuditService *services.AuditService
+	DB *database.Database
 }
 
-func NewExportHandler(db *database.Database, auditSvc *services.AuditService) *ExportHandler {
-	return &ExportHandler{DB: db, AuditService: auditSvc}
+func NewExportHandler(db *database.Database) *ExportHandler {
+	return &ExportHandler{DB: db}
 }
 
 func (h *ExportHandler) ExportCSV(c *fiber.Ctx) error {
@@ -36,9 +34,7 @@ func (h *ExportHandler) ExportCSV(c *fiber.Ctx) error {
 	exportID := uuid.NewString()
 	filename := fmt.Sprintf("receipts_%s.csv", time.Now().Format("2006-01-02"))
 	filtersJSON, _ := json.Marshal(fiber.Map{"start_date": startDate, "end_date": endDate, "status": status})
-	if h.AuditService != nil {
-		h.AuditService.Log(ctx, orgID, userID, "receipts.exported", "export", exportID, c.IP(), c.Get("User-Agent"), string(filtersJSON))
-	}
+
 	_, _ = h.DB.Pool.Exec(ctx,
 		`INSERT INTO export_history (id, organization_id, user_id, export_type, filters, file_name)
 		 VALUES ($1, $2, $3, 'csv', $4::jsonb, $5)`,

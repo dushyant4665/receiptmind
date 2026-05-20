@@ -1,4 +1,4 @@
-$BASE = "http://localhost:9090"
+$BASE = "http://localhost:8085"
 $PASS = 0; $FAIL = 0; $SKIP = 0; $LOG = @()
 
 function T($name, $method, $path, $body, $token, $expStatus) {
@@ -65,21 +65,20 @@ T "GET /users/me (bad token)" GET "/users/me" $null "garbage" 401
 
 # --- 5. Receipt Upload ---
 $RID = $null
-$tmp = [System.IO.Path]::GetTempFileName()
+$tmp = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "test_receipt_$([Guid]::NewGuid().ToString()).jpg")
 [System.IO.File]::WriteAllBytes($tmp, [System.Text.Encoding]::UTF8.GetBytes("fake receipt image data"))
 try {
-    $uh = @{"Authorization"="Bearer $TK"}
-    $ur = Invoke-WebRequest -Uri "$BASE/receipts/upload" -Method POST -Headers $uh -Form @{file=Get-Item $tmp} -UseBasicParsing -ErrorAction Stop
-    $uj = $ur.Content | ConvertFrom-Json
-    if ($ur.StatusCode -eq 201 -and $uj.success -and $uj.data.receipt_id) {
+    # Using curl.exe for upload to avoid PowerShell's curl alias (Invoke-WebRequest)
+    $urContent = & curl.exe -s -X POST "$BASE/receipts/upload" -H "Authorization: Bearer $TK" -F "file=@$tmp"
+    $uj = $urContent | ConvertFrom-Json
+    if ($uj.success -and $uj.data.receipt_id) {
         $script:PASS++; $script:LOG += "[PASS] POST /receipts/upload (201) id=$($uj.data.receipt_id)"
         $RID = $uj.data.receipt_id
     } else {
-        $script:FAIL++; $script:LOG += "[FAIL] POST /receipts/upload - status=$($ur.StatusCode) body=$($ur.Content)"
+        $script:FAIL++; $script:LOG += "[FAIL] POST /receipts/upload - body=$urContent"
     }
 } catch {
-    $s=0; if($_.Exception.Response){$s=[int]$_.Exception.Response.StatusCode}
-    $script:FAIL++; $script:LOG += "[FAIL] POST /receipts/upload - status=$s"
+    $script:FAIL++; $script:LOG += "[FAIL] POST /receipts/upload - error: $($_.Exception.Message)"
 } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
 
 T "POST /receipts/upload (no auth)" POST "/receipts/upload" $null $null 401

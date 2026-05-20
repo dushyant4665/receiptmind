@@ -28,18 +28,18 @@ export default function DashboardPage() {
             Operations Command
           </h1>
           <p className="mt-2 text-[15px] text-text-muted leading-relaxed">
-            Monitor submission velocity, reimbursement exposure, and policy drift. Your finance program is currently <span className="font-semibold text-emerald">healthy</span>.
+            Monitor submission velocity and reimbursement exposure. Your finance program is currently <span className="font-semibold text-emerald">healthy</span>.
           </p>
         </div>
         <div className="flex gap-3">
           <div className="rounded-lg border border-border-default bg-white p-4 shadow-xs min-w-[180px]">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] font-bold text-text-ghost uppercase tracking-widest">Audit Readiness</span>
+              <span className="text-[10px] font-bold text-text-ghost uppercase tracking-widest">System Status</span>
               <ShieldCheck className="size-3.5 text-emerald" />
             </div>
-            <div className="text-[22px] font-heading text-text-primary">98.4%</div>
+            <div className="text-[22px] font-heading text-text-primary">Online</div>
             <div className="mt-1 flex items-center gap-1 text-[11px] text-emerald font-medium">
-              <ArrowUpRight className="size-3" /> +2.1%
+              <div className="size-1.5 rounded-full bg-emerald animate-pulse" /> All systems active
             </div>
           </div>
         </div>
@@ -68,7 +68,6 @@ export default function DashboardPage() {
             <div className="space-y-5 p-5">
               {[
                 { label: "OCR extraction", value: 96, color: "bg-blue-500" },
-                { label: "Policy auto-approval", value: 71, color: "bg-emerald-500" },
                 { label: "Duplicate detection", value: 88, color: "bg-amber-500" },
                 { label: "Category confidence", value: 91, color: "bg-rose-500" },
               ].map((item) => (

@@ -30,8 +30,8 @@ export default function SettingsPage() {
         <p className="mt-1 text-[13px] text-text-muted">Manage your profile and workspace</p>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <section className="rounded-lg border border-border-default bg-white p-5 shadow-xs">
+      <div className="grid gap-6">
+        <section className="rounded-lg border border-border-default bg-white p-5 shadow-xs max-w-2xl">
           <h2 className="text-[13px] font-semibold text-text-primary">Profile</h2>
           <div className="mt-4 space-y-4">
             <div>
@@ -58,26 +58,6 @@ export default function SettingsPage() {
             >
               {updateProfile.isPending ? "Saving..." : "Save changes"}
             </Button>
-          </div>
-        </section>
-
-        <section className="rounded-lg border border-border-default bg-white p-5 shadow-xs">
-          <h2 className="text-[13px] font-semibold text-text-primary">Workspace</h2>
-          <div className="mt-4 space-y-2">
-            {[
-              ["/settings/billing", "Billing settings"],
-              ["/settings/team", "Team management"],
-              ["/settings/api", "API keys"],
-            ].map(([href, label]) => (
-              <Link
-                key={href}
-                href={href}
-                className="flex items-center justify-between rounded-lg border border-border-subtle bg-bg-page px-4 py-3 text-[12px] text-text-secondary transition-all hover:border-ink5 hover:text-text-primary hover:shadow-xs"
-              >
-                {label}
-                <span className="text-text-ghost">→</span>
-              </Link>
-            ))}
           </div>
         </section>
       </div>

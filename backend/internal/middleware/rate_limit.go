@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -12,6 +13,11 @@ import (
 
 func RateLimit(redisClient *redis.Client, prefix string, maxRequests int, window time.Duration) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		// Skip rate limiting in development
+		if os.Getenv("ENVIRONMENT") == "development" || os.Getenv("ENVIRONMENT") == "" {
+			return c.Next()
+		}
+
 		ctx := c.Context()
 		key := fmt.Sprintf("ratelimit:%s:%s", prefix, c.IP())
 

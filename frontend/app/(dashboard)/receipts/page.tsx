@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { UploadDropzone } from "@/components/expenses/upload-dropzone";
-import { useReceipts, type ReceiptFilters, useDeleteReceipt, useEditReceipt } from "@/hooks/use-receipts";
+import { useReceipts, type ReceiptFilters, useDeleteReceipt, useEditReceipt, useBulkDeleteReceipts, useBulkExportReceipts } from "@/hooks/use-receipts";
 import { useCsvExport } from "@/hooks/use-csv-export";
 import { useCreateRule } from "@/hooks/use-rules";
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +69,8 @@ export default function ReceiptsPage() {
 
   const { data, isLoading, isFetching } = useReceipts(50, 0, filters);
   const { mutate: deleteReceipt } = useDeleteReceipt();
+  const { mutate: bulkDelete } = useBulkDeleteReceipts();
+  const { mutate: bulkExport } = useBulkExportReceipts();
   const receipts = data?.receipts ?? [];
   const totalFromServer = data?.total ?? 0;
 
@@ -129,9 +131,13 @@ export default function ReceiptsPage() {
 
   const handleBulkDelete = async () => {
     if (!confirm(`Are you sure you want to delete ${selectedIds.size} receipts?`)) return;
-    for (const id of Array.from(selectedIds)) deleteReceipt(id);
-    toast.success(`${selectedIds.size} receipts deleted.`);
-    setSelectedIds(new Set());
+    bulkDelete(Array.from(selectedIds), {
+      onSuccess: () => setSelectedIds(new Set()),
+    });
+  };
+
+  const handleBulkExport = () => {
+    bulkExport(Array.from(selectedIds));
   };
 
   return (
@@ -142,10 +148,22 @@ export default function ReceiptsPage() {
           <p className="mt-1 text-[13px] text-text-muted">Upload, review, search, and export receipt data.</p>
         </div>
         {selectedIds.size > 0 && (
-          <Button variant="destructive" size="sm" onClick={handleBulkDelete} className="gap-2">
-            <Trash2 className="size-4" />
-            Delete {selectedIds.size} selected
-          </Button>
+          <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4">
+            <span className="mr-2 text-[13px] font-medium text-amber-600">
+              {selectedIds.size} receipts selected
+            </span>
+            <Button variant="outline" size="sm" onClick={handleBulkExport} className="gap-2 border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-700">
+              <Download className="size-4" />
+              Bulk Export
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleBulkDelete} className="gap-2">
+              <Trash2 className="size-4" />
+              Bulk Delete
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())} className="text-[11px]">
+              Clear
+            </Button>
+          </div>
         )}
       </div>
 
@@ -153,29 +171,34 @@ export default function ReceiptsPage() {
 
       <section className="overflow-hidden rounded-lg border border-border-default bg-white shadow-xs">
         <div className="flex flex-col gap-3 border-b border-border-subtle p-4 md:flex-row md:items-center md:justify-between">
-          <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_140px_130px_130px_120px_120px]">
-            <Input
-              placeholder="Search vendor, category, >500, last month..."
-              className="h-8 w-full text-[12px]"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="h-8 rounded-lg border border-border-default bg-white px-3 text-[12px] text-text-primary outline-none transition-colors hover:border-ink5 focus:border-ink3"
-            >
-              <option value="all">All statuses</option>
-              <option value="processed">Processed</option>
-              <option value="pending">Pending</option>
-              <option value="processing">Processing</option>
-              <option value="needs_review">Needs review</option>
-              <option value="failed">Failed</option>
-            </select>
-            <Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="h-8 text-[12px]" />
-            <Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="h-8 text-[12px]" />
-            <Input inputMode="decimal" placeholder="Min $" value={minAmount} onChange={(event) => setMinAmount(event.target.value)} className="h-8 text-[12px]" />
-            <Input inputMode="decimal" placeholder="Max $" value={maxAmount} onChange={(event) => setMaxAmount(event.target.value)} className="h-8 text-[12px]" />
+          <div className="flex flex-wrap items-center gap-2 flex-1">
+            <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_140px_130px_130px_120px_120px] flex-1">
+              <Input
+                placeholder="Search vendor, category, >500, last month..."
+                className="h-8 w-full text-[12px]"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="h-8 rounded-lg border border-border-default bg-white px-3 text-[12px] text-text-primary outline-none transition-colors hover:border-ink5 focus:border-ink3"
+              >
+                <option value="all">All statuses</option>
+                <option value="processed">Processed</option>
+                <option value="pending">Pending</option>
+                <option value="processing">Processing</option>
+                <option value="needs_review">Needs review</option>
+                <option value="failed">Failed</option>
+              </select>
+              <Input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="h-8 text-[12px]" />
+              <Input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="h-8 text-[12px]" />
+              <Input inputMode="decimal" placeholder="Min $" value={minAmount} onChange={(event) => setMinAmount(event.target.value)} className="h-8 text-[12px]" />
+              <Input inputMode="decimal" placeholder="Max $" value={maxAmount} onChange={(event) => setMaxAmount(event.target.value)} className="h-8 text-[12px]" />
+            </div>
+            <Button variant="outline" size="sm" onClick={toggleSelectAll} className="h-8 text-[11px]">
+              {selectedIds.size === receipts.length && receipts.length > 0 ? "Deselect All" : "Select All"}
+            </Button>
           </div>
           <div className="flex items-center gap-3">
             {isFetching && !isLoading && <span className="text-[11px] text-amber">Syncing...</span>}

@@ -11,38 +11,21 @@ import (
 )
 
 type Config struct {
-	Port                      string
-	DatabaseURL               string
-	RedisURL                  string
-	JWTSecret                 string
-	Environment               string
-	SupabaseURL               string
-	SupabaseKey               string
-	SupabaseBucket            string
-	MaxFileSize               int64
-	OpenAIKey                 string
-	OpenAIModel               string
-	GeminiKey                 string
-	WorkerConcurrency         int
-	RequestTimeout            time.Duration
-	SentryDSN                 string
-	EmailWebhookToken         string
-	FreeReceiptLimit          int
-	GoogleSheetsEnabled       bool
-	GoogleSheetsSpreadsheetID string
-	GoogleSheetsAccessToken   string
-	GoogleClientID            string
-	GoogleClientSecret        string
-	GoogleRedirectURL         string
-	StripeSecretKey           string
-	StripeCheckoutURL         string
-	StripeProPriceID          string
-	StripeTeamPriceID         string
-	StripeWebhookSecret       string
-	AppURL                    string
-	ResendAPIKey              string
-	EmailFrom                 string
-	FreePlanReceiptLimit      int
+	Port              string
+	DatabaseURL       string
+	RedisURL          string
+	JWTSecret         string
+	Environment       string
+	SupabaseURL       string
+	SupabaseKey       string
+	SupabaseBucket    string
+	MaxFileSize       int64
+	OpenAIKey         string
+	OpenAIModel       string
+	GeminiKey         string
+	WorkerConcurrency int
+	RequestTimeout    time.Duration
+	AppURL            string
 }
 
 func Load() *Config {
@@ -54,38 +37,21 @@ func Load() *Config {
 	}
 
 	cfg := &Config{
-		Port:                      getEnv("PORT", "8080"),
-		DatabaseURL:               getEnv("DATABASE_URL", ""),
-		RedisURL:                  getEnv("REDIS_URL", "redis://localhost:6379"),
-		JWTSecret:                 getEnv("JWT_SECRET", ""),
-		Environment:               getEnv("ENVIRONMENT", "development"),
-		SupabaseURL:               getEnv("SUPABASE_URL", ""),
-		SupabaseKey:               getEnv("SUPABASE_KEY", getEnv("SUPABASE_SERVICE_ROLE_KEY", "")),
-		SupabaseBucket:            getEnv("SUPABASE_BUCKET", getEnv("SUPABASE_STORAGE_BUCKET", "receipts")),
-		MaxFileSize:               getEnvInt64("MAX_FILE_SIZE", 10*1024*1024),
-		OpenAIKey:                 getEnv("OPENAI_KEY", getEnv("OPENAI_API_KEY", "")),
-		OpenAIModel:               getEnv("OPENAI_MODEL", getEnv("OPEN_MODEL", "gpt-4o")),
-		GeminiKey:                 getEnv("GEMINI_API_KEY", ""),
-		WorkerConcurrency:         getEnvInt("WORKER_CONCURRENCY", 5),
-		RequestTimeout:            time.Duration(getEnvInt("REQUEST_TIMEOUT_SECONDS", 10)) * time.Second,
-		SentryDSN:                 getEnv("SENTRY_DSN", ""),
-		EmailWebhookToken:         getEnv("EMAIL_WEBHOOK_TOKEN", ""),
-		FreeReceiptLimit:          getEnvInt("FREE_RECEIPT_LIMIT", 50),
-		GoogleSheetsEnabled:       getEnv("GOOGLE_SHEETS_ENABLED", "false") == "true",
-		GoogleSheetsSpreadsheetID: getEnv("GOOGLE_SHEETS_SPREADSHEET_ID", ""),
-		GoogleSheetsAccessToken:   getEnv("GOOGLE_SHEETS_ACCESS_TOKEN", ""),
-		GoogleClientID:            getEnv("GOOGLE_CLIENT_ID", ""),
-		GoogleClientSecret:        getEnv("GOOGLE_CLIENT_SECRET", ""),
-		GoogleRedirectURL:         getEnv("GOOGLE_REDIRECT_URL", ""),
-		StripeSecretKey:           getEnv("STRIPE_SECRET_KEY", ""),
-		StripeCheckoutURL:         getEnv("STRIPE_CHECKOUT_URL", ""),
-		StripeProPriceID:          getEnv("STRIPE_PRO_PRICE_ID", ""),
-		StripeTeamPriceID:         getEnv("STRIPE_TEAM_PRICE_ID", ""),
-		StripeWebhookSecret:       getEnv("STRIPE_WEBHOOK_SECRET", ""),
-		AppURL:                    getEnv("APP_URL", getEnv("FRONTEND_URL", "http://localhost:3000")),
-		ResendAPIKey:              getEnv("RESEND_API_KEY", ""),
-		EmailFrom:                 getEnv("EMAIL_FROM", "ReceiptMind <hello@receiptmind.app>"),
-		FreePlanReceiptLimit:      getEnvInt("FREE_PLAN_RECEIPT_LIMIT", getEnvInt("FREE_RECEIPT_LIMIT", 10)),
+		Port:              getEnv("PORT", "8080"),
+		DatabaseURL:       getEnv("DATABASE_URL", ""),
+		RedisURL:          getEnv("REDIS_URL", "redis://localhost:6379"),
+		JWTSecret:         getEnv("JWT_SECRET", ""),
+		Environment:       getEnv("ENVIRONMENT", "development"),
+		SupabaseURL:       getEnv("SUPABASE_URL", ""),
+		SupabaseKey:       getEnv("SUPABASE_KEY", getEnv("SUPABASE_SERVICE_ROLE_KEY", "")),
+		SupabaseBucket:    getEnv("SUPABASE_BUCKET", getEnv("SUPABASE_STORAGE_BUCKET", "receipts")),
+		MaxFileSize:       getEnvInt64("MAX_FILE_SIZE", 10*1024*1024),
+		OpenAIKey:         getEnv("OPENAI_KEY", getEnv("OPENAI_API_KEY", "")),
+		OpenAIModel:       getEnv("OPENAI_MODEL", getEnv("OPEN_MODEL", "gpt-4o")),
+		GeminiKey:         getEnv("GEMINI_API_KEY", ""),
+		WorkerConcurrency: getEnvInt("WORKER_CONCURRENCY", 5),
+		RequestTimeout:    time.Duration(getEnvInt("REQUEST_TIMEOUT_SECONDS", 10)) * time.Second,
+		AppURL:            getEnv("APP_URL", getEnv("FRONTEND_URL", "http://localhost:3000")),
 	}
 
 	if cfg.GeminiKey != "" {
@@ -111,12 +77,12 @@ func (c *Config) Validate() error {
 	} else if len(c.JWTSecret) < 32 && !c.IsDevelopment() {
 		errs = append(errs, "JWT_SECRET must be at least 32 characters in production")
 	}
-	if c.SupabaseURL == "" {
-		errs = append(errs, "SUPABASE_URL is required")
-	}
-	if c.SupabaseKey == "" {
-		errs = append(errs, "SUPABASE_KEY is required")
-	}
+	// if c.SupabaseURL == "" {
+	// 	errs = append(errs, "SUPABASE_URL is required")
+	// }
+	// if c.SupabaseKey == "" {
+	// 	errs = append(errs, "SUPABASE_KEY is required")
+	// }
 
 	if len(errs) > 0 {
 		return fmt.Errorf("config validation failed: %v", errs)

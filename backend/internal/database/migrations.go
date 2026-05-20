@@ -369,6 +369,15 @@ func RunMigrations(ctx context.Context, db *Database) error {
 			sent_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
 			PRIMARY KEY (organization_id, digest_date)
 		)`,
+		`CREATE TABLE IF NOT EXISTS pending_registrations (
+			token_hash TEXT PRIMARY KEY,
+			email TEXT NOT NULL,
+			password_hash TEXT NOT NULL,
+			organization_name TEXT NOT NULL,
+			expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_pending_registrations_email ON pending_registrations(email)`,
 	}
 
 	for i, m := range migrations {

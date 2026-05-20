@@ -4,6 +4,8 @@ import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useReceipt } from "@/hooks/use-receipts";
 
+import { ReceiptPreview } from "@/components/receipts/receipt-preview";
+
 export default function ReceiptDetailPage() {
   const params = useParams<{ id: string }>();
   const { data, isLoading } = useReceipt(params.id);
@@ -21,19 +23,7 @@ export default function ReceiptDetailPage() {
   return (
     <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
       <section className="rounded-[12px] border border-border-default bg-bg-surface p-5">
-        <h2 className="text-[15px] font-medium text-text-primary">Receipt preview</h2>
-        <div className="mt-4 aspect-[3/4] rounded-[12px] border border-border-default bg-bg-page p-4">
-          <div className="mx-auto flex h-full max-w-[260px] items-center justify-center rounded-[8px] border border-border-subtle bg-bg-surface p-4 text-center">
-            {isLoading ? (
-              <p className="font-mono text-[12px] text-text-muted">Loading receipt...</p>
-            ) : data?.fileUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={data.fileUrl} alt={data.vendorName ?? "Receipt"} className="max-h-full max-w-full object-contain" />
-            ) : (
-              <p className="font-mono text-[12px] text-text-muted">Receipt preview unavailable</p>
-            )}
-          </div>
-        </div>
+        <ReceiptPreview receiptId={params.id} />
       </section>
       <section className="rounded-[12px] border border-border-default bg-bg-surface p-5">
         <div className="flex items-center justify-between">

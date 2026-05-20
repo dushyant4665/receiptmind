@@ -12,16 +12,14 @@ import (
 )
 
 type RuleHandler struct {
-	DB           *database.Database
-	RuleService  *services.RuleService
-	AuditService *services.AuditService
+	DB          *database.Database
+	RuleService *services.RuleService
 }
 
-func NewRuleHandler(db *database.Database, ruleSvc *services.RuleService, auditSvc *services.AuditService) *RuleHandler {
+func NewRuleHandler(db *database.Database, ruleSvc *services.RuleService) *RuleHandler {
 	return &RuleHandler{
-		DB:           db,
-		RuleService:  ruleSvc,
-		AuditService: auditSvc,
+		DB:          db,
+		RuleService: ruleSvc,
 	}
 }
 
@@ -53,10 +51,6 @@ func (h *RuleHandler) CreateRule(c *fiber.Ctx) error {
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create rule")
 		return SendError(c, fiber.StatusInternalServerError, "failed to create rule")
-	}
-	if h.AuditService != nil {
-		userID := c.Locals("user_id").(string)
-		h.AuditService.Log(ctx, orgID, userID, "rule.created", "rule", rule.ID, c.IP(), c.Get("User-Agent"), "{}")
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(SuccessResponse(rule))

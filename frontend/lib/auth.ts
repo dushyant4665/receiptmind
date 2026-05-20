@@ -72,6 +72,20 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!response.ok) {
+          let errorMessage = null;
+          try {
+            const errorData = await response.json();
+            if (errorData && errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } catch (e) {
+            // If json parsing fails, use fallback
+          }
+
+          if (errorMessage) {
+            throw new Error(errorMessage);
+          }
+
           const message = response.status === 401 ? "Invalid email or password." : "Unable to sign in.";
           throw new Error(message);
         }

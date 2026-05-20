@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,12 +34,10 @@ type ReceiptHandler struct {
 	QueueService     *services.QueueService
 	ExceptionService *services.ExceptionService
 	RuleService      *services.RuleService
-	QuotaService     *services.QuotaService
-	AuditService     *services.AuditService
 	Redis            *redis.Client
 }
 
-func NewReceiptHandler(db *database.Database, cfg *config.Config, storageSvc *services.StorageService, queueSvc *services.QueueService, exceptionSvc *services.ExceptionService, ruleSvc *services.RuleService, quotaSvc *services.QuotaService, auditSvc *services.AuditService, redisClient *redis.Client) *ReceiptHandler {
+func NewReceiptHandler(db *database.Database, cfg *config.Config, storageSvc *services.StorageService, queueSvc *services.QueueService, exceptionSvc *services.ExceptionService, ruleSvc *services.RuleService, redisClient *redis.Client) *ReceiptHandler {
 	return &ReceiptHandler{
 		DB:               db,
 		Config:           cfg,
@@ -45,8 +45,6 @@ func NewReceiptHandler(db *database.Database, cfg *config.Config, storageSvc *se
 		QueueService:     queueSvc,
 		ExceptionService: exceptionSvc,
 		RuleService:      ruleSvc,
-		QuotaService:     quotaSvc,
-		AuditService:     auditSvc,
 		Redis:            redisClient,
 	}
 }
@@ -63,12 +61,6 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 	orgID := c.Locals("organization_id").(string)
 
 	ctx := context.Background()
-	if h.QuotaService != nil {
-		canProcess, used, limit := h.QuotaService.CanProcess(ctx, orgID)
-		if !canProcess {
-			return SendError(c, fiber.StatusPaymentRequired, h.QuotaService.BlockMessage(used, limit))
-		}
-	}
 
 	file, err := c.FormFile("file")
 	if err != nil {
@@ -153,9 +145,6 @@ func (h *ReceiptHandler) Upload(c *fiber.Ctx) error {
 		 VALUES ($1, $2, $3, 'queued')`,
 		uuid.NewString(), receiptID, orgID,
 	)
-	if h.AuditService != nil {
-		h.AuditService.Log(ctx, orgID, userID, "receipt.uploaded", "receipt", receiptID, c.IP(), c.Get("User-Agent"), "{}")
-	}
 
 	// Return SUCCESS immediately with the saved data
 	return c.Status(fiber.StatusCreated).JSON(SuccessResponse(fiber.Map{
@@ -480,10 +469,6 @@ func (h *ReceiptHandler) EditReceipt(c *fiber.Ctx) error {
 	if req.VendorName != nil && req.Category != nil {
 		go h.RuleService.AutoLearnFromEdit(context.Background(), orgID, *req.VendorName, *req.Category)
 	}
-	if h.AuditService != nil {
-		userID := c.Locals("user_id").(string)
-		h.AuditService.Log(ctx, orgID, userID, "receipt.edited", "receipt", receiptID, c.IP(), c.Get("User-Agent"), "{}")
-	}
 
 	h.invalidateCache(orgID)
 
@@ -525,6 +510,122 @@ func (h *ReceiptHandler) DeleteReceipt(c *fiber.Ctx) error {
 	h.invalidateCache(orgID)
 
 	return c.JSON(SuccessResponse(fiber.Map{"id": receiptID, "deleted": true}))
+}
+
+func (h *ReceiptHandler) BulkDeleteReceipts(c *fiber.Ctx) error {
+	orgID := c.Locals("organization_id").(string)
+
+	var req struct {
+		ReceiptIDs []string `json:"receipt_ids"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return SendError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+
+	if len(req.ReceiptIDs) == 0 {
+		return SendError(c, fiber.StatusBadRequest, "no receipt IDs provided")
+	}
+
+	ctx := context.Background()
+
+	// Get file paths first for deletion
+	rows, err := h.DB.Pool.Query(ctx,
+		"SELECT file_path FROM receipts WHERE id = ANY($1) AND organization_id = $2",
+		req.ReceiptIDs, orgID,
+	)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var filePath string
+			if err := rows.Scan(&filePath); err == nil {
+				_ = h.StorageService.DeleteFile(ctx, filePath)
+				_, _ = h.DB.Pool.Exec(ctx, "UPDATE storage_objects SET deleted_at = NOW() WHERE organization_id = $1 AND path = $2", orgID, filePath)
+			}
+		}
+	}
+
+	_, err = h.DB.Pool.Exec(ctx,
+		"DELETE FROM receipts WHERE id = ANY($1) AND organization_id = $2",
+		req.ReceiptIDs, orgID,
+	)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to bulk delete receipts")
+		return SendError(c, fiber.StatusInternalServerError, "failed to delete receipts")
+	}
+
+	h.invalidateCache(orgID)
+
+	return c.JSON(SuccessResponse(fiber.Map{"count": len(req.ReceiptIDs), "deleted": true}))
+}
+
+func (h *ReceiptHandler) BulkExportReceipts(c *fiber.Ctx) error {
+	orgID := c.Locals("organization_id").(string)
+
+	var req struct {
+		ReceiptIDs []string `json:"receipt_ids"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return SendError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+
+	if len(req.ReceiptIDs) == 0 {
+		return SendError(c, fiber.StatusBadRequest, "no receipt IDs provided")
+	}
+
+	ctx := context.Background()
+	filename := fmt.Sprintf("bulk_export_%s.csv", time.Now().Format("2006-01-02"))
+
+	query := `SELECT
+				id,
+				COALESCE(vendor_name, raw_vendor_name, 'Unknown') AS export_vendor,
+				COALESCE(amount, raw_amount, 0)::double precision AS export_amount,
+				COALESCE(category, raw_category, 'Uncategorized') AS export_category,
+				COALESCE(receipt_date, raw_date, created_at) AS export_date,
+				COALESCE(confidence, raw_confidence, 0) AS export_confidence,
+				status,
+				COALESCE(currency, 'USD') AS export_currency,
+				COALESCE(source, 'upload') AS export_source,
+				COALESCE(file_name, file_path, '') AS export_file_name,
+				created_at
+			  FROM receipts 
+			  WHERE organization_id = $1 AND id = ANY($2)
+			  ORDER BY created_at DESC`
+
+	rows, err := h.DB.Pool.Query(ctx, query, orgID, req.ReceiptIDs)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to query receipts for bulk export")
+		return SendError(c, fiber.StatusInternalServerError, "internal server error")
+	}
+
+	c.Set("Content-Type", "text/csv")
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
+
+	// Write CSV to response
+	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		defer rows.Close()
+		csvWriter := csv.NewWriter(w)
+		_ = csvWriter.Write([]string{
+			"Receipt ID", "Vendor", "Amount", "Currency", "Category", "Receipt Date", "Confidence %", "Status", "Source", "File Name", "Created At",
+		})
+
+		for rows.Next() {
+			var id, vendor, category, status, currency, source, fileName string
+			var amount, confidence float64
+			var date, createdAt time.Time
+
+			if err := rows.Scan(&id, &vendor, &amount, &category, &date, &confidence, &status, &currency, &source, &fileName, &createdAt); err != nil {
+				continue
+			}
+
+			_ = csvWriter.Write([]string{
+				id, vendor, fmt.Sprintf("%.2f", amount), currency, category, date.Format("2006-01-02"), fmt.Sprintf("%.0f%%", confidence*100), status, source, fileName, createdAt.Format("2006-01-02 15:04:05"),
+			})
+		}
+		csvWriter.Flush()
+		w.Flush()
+	})
+
+	return nil
 }
 
 func (h *ReceiptHandler) invalidateCache(orgID string) {

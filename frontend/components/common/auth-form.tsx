@@ -68,8 +68,8 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
         </CardTitle>
         <p className="text-sm leading-6 text-ink3">
           {mode === "login"
-            ? "Access approvals, receipt ingestion, and executive reporting."
-            : "Provision your tenant, configure approvals, and connect your finance stack."}
+            ? "Manage receipts, track expenses, and generate reports."
+            : "Provision your tenant, configure rules, and manage your data."}
         </p>
       </CardHeader>
       <CardContent>

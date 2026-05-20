@@ -230,3 +230,57 @@ export function useEditReceipt() {
     },
   });
 }
+
+export function useBulkDeleteReceipts() {
+  const queryClient = useQueryClient();
+  const { data: session } = useSession();
+
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      await deleteApiData("/receipts/bulk", {
+        authToken: session?.accessToken,
+        config: { data: { receipt_ids: ids } },
+      });
+      return ids;
+    },
+    onSuccess: (ids) => {
+      toast.success(`${ids.length} receipts deleted`);
+      queryClient.invalidateQueries({ queryKey: ["receipts"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+    },
+    onError: () => {
+      toast.error("Failed to delete receipts");
+    },
+  });
+}
+
+export function useBulkExportReceipts() {
+  const { data: session } = useSession();
+
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const response = await getApiData<Blob>("/receipts/bulk/export", {
+        authToken: session?.accessToken,
+        config: {
+          method: "POST",
+          data: { receipt_ids: ids },
+          responseType: "blob",
+        },
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `bulk_export_${new Date().toISOString().split("T")[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    },
+    onSuccess: () => {
+      toast.success("Export started");
+    },
+    onError: () => {
+      toast.error("Failed to export receipts");
+    },
+  });
+}
