@@ -118,7 +118,6 @@ func RunMigrations(ctx context.Context, db *Database) error {
 		`ALTER TABLE rules ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE`,
 		`ALTER TABLE organization_members ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE`,
 		`ALTER TABLE accountant_clients ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE`,
-		`ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE`,
 		`ALTER TABLE export_history ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE`,
 		`ALTER TABLE bank_imports ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE`,
 		`ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE`,
@@ -257,20 +256,6 @@ func RunMigrations(ctx context.Context, db *Database) error {
 		`CREATE INDEX IF NOT EXISTS idx_subscriptions_org ON subscriptions(organization_id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_org_active_unique ON subscriptions(organization_id) WHERE deleted_at IS NULL`,
 		`CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions(status)`,
-		`CREATE TABLE IF NOT EXISTS audit_logs (
-			id UUID PRIMARY KEY,
-			organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
-			user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-			action TEXT NOT NULL,
-			entity_type TEXT NOT NULL,
-			entity_id TEXT,
-			ip_address TEXT,
-			user_agent TEXT,
-			metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_logs_org_created ON audit_logs(organization_id, created_at DESC)`,
-		`CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action)`,
 		`CREATE TABLE IF NOT EXISTS export_history (
 			id UUID PRIMARY KEY,
 			organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,

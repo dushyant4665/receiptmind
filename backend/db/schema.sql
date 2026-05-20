@@ -155,19 +155,6 @@ CREATE TABLE IF NOT EXISTS receipt_processing_jobs (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS audit_logs (
-    id UUID PRIMARY KEY,
-    organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    action TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    entity_id TEXT,
-    ip_address TEXT,
-    user_agent TEXT,
-    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
 CREATE TABLE IF NOT EXISTS export_history (
     id UUID PRIMARY KEY,
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -232,8 +219,6 @@ CREATE INDEX IF NOT EXISTS idx_storage_objects_receipt ON storage_objects(receip
 CREATE INDEX IF NOT EXISTS idx_processing_jobs_receipt ON receipt_processing_jobs(receipt_id);
 CREATE INDEX IF NOT EXISTS idx_processing_jobs_org_state ON receipt_processing_jobs(organization_id, processing_state, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_processing_jobs_state ON receipt_processing_jobs(processing_state);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_org_created ON audit_logs(organization_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
 CREATE INDEX IF NOT EXISTS idx_export_history_org_created ON export_history(organization_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_verification_tokens_hash ON verification_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_verification_tokens_user ON verification_tokens(user_id);
