@@ -165,7 +165,117 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 }
 
 func (h *AuthHandler) ForgotPassword(c *fiber.Ctx) error {
-	return c.JSON(SuccessResponse(fiber.Map{"message": "If this email exists, a reset link was sent (simulation)."}))
+	type ForgotRequest struct {
+		Email string `json:"email"`
+	}
+	var req ForgotRequest
+	if err := c.BodyParser(&req); err != nil {
+		return SendError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+
+	if req.Email == "" {
+		return SendError(c, fiber.StatusBadRequest, "email is required")
+	}
+
+	ctx := context.Background()
+	var userID string
+	err := h.DB.Pool.QueryRow(ctx, "SELECT id FROM users WHERE email = $1", strings.ToLower(strings.TrimSpace(req.Email))).Scan(&userID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			// Don't reveal if email exists
+			return c.JSON(SuccessResponse(fiber.Map{"message": "If this email exists, a reset link was sent."}))
+		}
+		return SendError(c, fiber.StatusInternalServerError, "internal server error")
+	}
+
+	// Generate reset token
+	token := uuid.New().String()
+	hash := sha256.Sum256([]byte(token))
+	tokenHash := hex.EncodeToString(hash[:])
+
+	_, err = h.DB.Pool.Exec(ctx,
+		"INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)",
+		uuid.New().String(), userID, tokenHash, time.Now().Add(1*time.Hour),
+	)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create password reset token")
+		return SendError(c, fiber.StatusInternalServerError, "internal server error")
+	}
+
+	// Send reset email
+	go func() {
+		if err := h.EmailService.SendPasswordResetEmail(req.Email, token); err != nil {
+			log.Error().Err(err).Msg("Failed to send password reset email")
+		}
+	}()
+
+	return c.JSON(SuccessResponse(fiber.Map{"message": "If this email exists, a reset link was sent."}))
+}
+
+func (h *AuthHandler) ResetPassword(c *fiber.Ctx) error {
+	type ResetRequest struct {
+		Token       string `json:"token"`
+		NewPassword string `json:"new_password"`
+	}
+	var req ResetRequest
+	if err := c.BodyParser(&req); err != nil {
+		return SendError(c, fiber.StatusBadRequest, "invalid request body")
+	}
+
+	if req.Token == "" || req.NewPassword == "" {
+		return SendError(c, fiber.StatusBadRequest, "token and new password are required")
+	}
+
+	if len(req.NewPassword) < 8 {
+		return SendError(c, fiber.StatusBadRequest, "password must be at least 8 characters")
+	}
+
+	hash := sha256.Sum256([]byte(req.Token))
+	tokenHash := hex.EncodeToString(hash[:])
+
+	ctx := context.Background()
+	var userID string
+	err := h.DB.Pool.QueryRow(ctx,
+		`SELECT user_id FROM password_reset_tokens 
+		 WHERE token_hash = $1 AND expires_at > NOW() AND used_at IS NULL`,
+		tokenHash,
+	).Scan(&userID)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return SendError(c, fiber.StatusBadRequest, "invalid or expired token")
+		}
+		return SendError(c, fiber.StatusInternalServerError, "internal server error")
+	}
+
+	hashedPassword, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		return SendError(c, fiber.StatusInternalServerError, "failed to hash password")
+	}
+
+	tx, err := h.DB.Pool.Begin(ctx)
+	if err != nil {
+		return SendError(c, fiber.StatusInternalServerError, "failed to start transaction")
+	}
+	defer tx.Rollback(ctx)
+
+	// Update password
+	_, err = tx.Exec(ctx, "UPDATE users SET password_hash = $1 WHERE id = $2", hashedPassword, userID)
+	if err != nil {
+		return SendError(c, fiber.StatusInternalServerError, "failed to update password")
+	}
+
+	// Mark token as used
+	_, err = tx.Exec(ctx, "UPDATE password_reset_tokens SET used_at = NOW() WHERE token_hash = $1", tokenHash)
+	if err != nil {
+		return SendError(c, fiber.StatusInternalServerError, "failed to update token")
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return SendError(c, fiber.StatusInternalServerError, "failed to commit transaction")
+	}
+
+	return c.JSON(SuccessResponse(fiber.Map{"message": "Password updated successfully. You can now log in."}))
 }
 
 func (h *AuthHandler) createSessionResponse(c *fiber.Ctx, ctx context.Context, user models.User) error {

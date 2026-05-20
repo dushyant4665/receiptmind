@@ -102,6 +102,7 @@ func (s *Server) setupRoutes() {
 	auth.Post("/register", middleware.RateLimit(s.Redis.Client, "signup", 5, 10*time.Minute), authHandler.Register)
 	auth.Post("/login", middleware.RateLimit(s.Redis.Client, "login", 5, 1*time.Minute), authHandler.Login)
 	auth.Post("/forgot-password", middleware.RateLimit(s.Redis.Client, "forgot-password", 5, 10*time.Minute), authHandler.ForgotPassword)
+	auth.Post("/reset-password", authHandler.ResetPassword)
 	auth.Post("/verify-email", authHandler.VerifyEmail)
 	auth.Post("/resend-verification", authHandler.ResendVerification)
 	auth.Post("/refresh", authHandler.Refresh)
