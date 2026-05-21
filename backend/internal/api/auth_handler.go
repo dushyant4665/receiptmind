@@ -99,12 +99,11 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusInternalServerError, "failed to initiate registration")
 	}
 
-	// Send verification email (not in goroutine to ensure it finishes or errors)
-	err = h.EmailService.SendVerificationEmail(req.Email, token)
-	if err != nil {
-		log.Error().Err(err).Str("email", req.Email).Msg("CRITICAL: Failed to send verification email during signup")
-		return SendError(c, fiber.StatusInternalServerError, "failed to send verification email, please try again")
-	}
+	go func(email, verifyToken string) {
+		if err := h.EmailService.SendVerificationEmail(email, verifyToken); err != nil {
+			log.Error().Err(err).Str("email", email).Msg("Failed to send verification email during signup")
+		}
+	}(req.Email, token)
 
 	return c.JSON(SuccessResponse(fiber.Map{
 		"message": "Registration initiated. Please check your email to verify and complete your account setup.",
@@ -459,12 +458,11 @@ func (h *AuthHandler) ResendVerification(c *fiber.Ctx) error {
 		return SendError(c, fiber.StatusInternalServerError, "internal server error")
 	}
 
-	// Send verification email
-	err = h.EmailService.SendVerificationEmail(req.Email, token)
-	if err != nil {
-		log.Error().Err(err).Str("email", req.Email).Msg("Failed to resend verification email")
-		return SendError(c, fiber.StatusInternalServerError, "failed to send email")
-	}
+	go func(email, verifyToken string) {
+		if err := h.EmailService.SendVerificationEmail(email, verifyToken); err != nil {
+			log.Error().Err(err).Str("email", email).Msg("Failed to resend verification email")
+		}
+	}(req.Email, token)
 
 	return c.JSON(SuccessResponse(fiber.Map{"sent": true, "message": "Verification email sent. Please check your inbox."}))
 }
