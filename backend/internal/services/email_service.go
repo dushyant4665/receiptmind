@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/smtp"
+	"time"
 
 	"github.com/rs/zerolog/log"
 
@@ -21,8 +22,7 @@ func NewEmailService(cfg *config.Config) *EmailService {
 
 func (s *EmailService) sendEmail(to string, subject, body string) error {
 	if s.Config.SMTPHost == "" || s.Config.SMTPUser == "" || s.Config.SMTPPass == "" {
-		log.Warn().Str("to", to).Str("subject", subject).Msg("SMTP not configured, skipping email sending")
-		return nil
+		return fmt.Errorf("SMTP is not configured")
 	}
 
 	from := s.Config.SMTPFrom
@@ -45,22 +45,36 @@ func (s *EmailService) sendEmail(to string, subject, body string) error {
 	// Port 465 is for implicit SSL/TLS.
 	// Port 587 is for STARTTLS (standard).
 	if s.Config.SMTPPort == 465 {
-		return s.sendEmailWithTLS(addr, from, to, msg, auth)
+		return s.sendWithTimeout(func() error {
+			return s.sendEmailWithTLS(addr, from, to, msg, auth)
+		})
 	}
 
-	// Standard smtp.SendMail for port 587 or 25
-	err := smtp.SendMail(addr, auth, s.Config.SMTPUser, []string{to}, []byte(msg))
+	err := s.sendWithTimeout(func() error {
+		return smtp.SendMail(addr, auth, s.Config.SMTPUser, []string{to}, []byte(msg))
+	})
 	if err != nil {
 		log.Error().Err(err).Str("to", to).Msg("Failed to send email via standard SMTP")
-		if s.Config.IsDevelopment() {
-			log.Warn().Str("to", to).Str("subject", subject).Msg("Continuing without SMTP delivery in development")
-			return nil
-		}
 		return err
 	}
 
 	log.Info().Str("to", to).Msg("Email sent successfully via SMTP")
 	return nil
+}
+
+func (s *EmailService) sendWithTimeout(fn func() error) error {
+	result := make(chan error, 1)
+	go func() {
+		result <- fn()
+	}()
+
+	timeout := 12 * time.Second
+	select {
+	case err := <-result:
+		return err
+	case <-time.After(timeout):
+		return fmt.Errorf("email send timed out after %s", timeout)
+	}
 }
 
 func (s *EmailService) sendEmailWithTLS(addr, from, to, msg string, auth smtp.Auth) error {
