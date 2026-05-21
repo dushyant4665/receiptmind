@@ -1,4 +1,4 @@
-package handlers
+package api
 
 import (
 	"bufio"
@@ -12,14 +12,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/db"
 )
 
 type ExportHandler struct {
-	DB *database.Database
+	DB *db.Database
 }
 
-func NewExportHandler(db *database.Database) *ExportHandler {
+func NewExportHandler(db *db.Database) *ExportHandler {
 	return &ExportHandler{DB: db}
 }
 
@@ -264,3 +264,5 @@ func excelSafeDateTime(t time.Time) string {
 	}
 	return "\t" + t.Format("2006-01-02 15:04:05")
 }
+
+

@@ -11,3 +11,5 @@ func GenerateSlug(s string) string {
 	s = regexp.MustCompile(`\s+`).ReplaceAllString(s, "-")
 	return strings.Trim(s, "-")
 }
+
+

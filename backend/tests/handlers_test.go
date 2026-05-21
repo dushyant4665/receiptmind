@@ -11,8 +11,8 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	"receiptmind-backend/internal/api"
 	"receiptmind-backend/internal/config"
-	"receiptmind-backend/internal/handlers"
 	"receiptmind-backend/internal/middleware"
 	"receiptmind-backend/internal/services"
 )
@@ -31,7 +31,7 @@ func newTestApp() (*fiber.App, string) {
 			if e, ok := err.(*fiber.Error); ok {
 				code = e.Code
 			}
-			return c.Status(code).JSON(handlers.ErrorResponse(err.Error()))
+			return c.Status(code).JSON(api.ErrorResponse(err.Error()))
 		},
 	})
 
@@ -39,13 +39,13 @@ func newTestApp() (*fiber.App, string) {
 
 	// Public
 	app.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(handlers.SuccessResponse(fiber.Map{"status": "ok"}))
+		return c.JSON(api.SuccessResponse(fiber.Map{"status": "ok"}))
 	})
 	app.Get("/ready", func(c *fiber.Ctx) error {
-		return c.JSON(handlers.SuccessResponse(fiber.Map{"status": "ready"}))
+		return c.JSON(api.SuccessResponse(fiber.Map{"status": "ready"}))
 	})
 	app.Get("/metrics", func(c *fiber.Ctx) error {
-		return c.JSON(handlers.SuccessResponse(fiber.Map{
+		return c.JSON(api.SuccessResponse(fiber.Map{
 			"request_count": 0, "error_count": 0, "error_rate_percent": 0,
 			"job_queue_size": 0, "dead_letter_size": 0,
 		}))
@@ -59,15 +59,15 @@ func newTestApp() (*fiber.App, string) {
 			OrganizationName string `json:"organization_name"`
 		}
 		if err := c.BodyParser(&req); err != nil {
-			return handlers.SendError(c, fiber.StatusBadRequest, "invalid request body")
+			return api.SendError(c, fiber.StatusBadRequest, "invalid request body")
 		}
 		if req.Email == "" || req.Password == "" || req.OrganizationName == "" {
-			return handlers.SendError(c, fiber.StatusBadRequest, "email, password, and organization_name are required")
+			return api.SendError(c, fiber.StatusBadRequest, "email, password, and organization_name are required")
 		}
 		if len(req.Password) < 6 {
-			return handlers.SendError(c, fiber.StatusBadRequest, "password must be at least 6 characters")
+			return api.SendError(c, fiber.StatusBadRequest, "password must be at least 6 characters")
 		}
-		return c.Status(fiber.StatusCreated).JSON(handlers.SuccessResponse(fiber.Map{"email": req.Email}))
+		return c.Status(fiber.StatusCreated).JSON(api.SuccessResponse(fiber.Map{"email": req.Email}))
 	})
 	app.Post("/auth/login", func(c *fiber.Ctx) error {
 		var req struct {
@@ -75,29 +75,29 @@ func newTestApp() (*fiber.App, string) {
 			Password string `json:"password"`
 		}
 		if err := c.BodyParser(&req); err != nil {
-			return handlers.SendError(c, fiber.StatusBadRequest, "invalid request body")
+			return api.SendError(c, fiber.StatusBadRequest, "invalid request body")
 		}
 		if req.Email == "" || req.Password == "" {
-			return handlers.SendError(c, fiber.StatusBadRequest, "email and password are required")
+			return api.SendError(c, fiber.StatusBadRequest, "email and password are required")
 		}
-		return c.JSON(handlers.SuccessResponse(fiber.Map{"email": req.Email}))
+		return c.JSON(api.SuccessResponse(fiber.Map{"email": req.Email}))
 	})
 
 	// Protected
 	protected := app.Group("/", middleware.AuthProtected(jwtSvc))
 	protected.Get("/users/me", func(c *fiber.Ctx) error {
-		return c.JSON(handlers.SuccessResponse(fiber.Map{
+		return c.JSON(api.SuccessResponse(fiber.Map{
 			"id": c.Locals("user_id"), "organization_id": c.Locals("organization_id"),
 		}))
 	})
 	protected.Get("/dashboard", func(c *fiber.Ctx) error {
-		return c.JSON(handlers.SuccessResponse(fiber.Map{
+		return c.JSON(api.SuccessResponse(fiber.Map{
 			"total_receipts": 0, "total_amount": 0, "processed_count": 0,
 			"pending_count": 0, "needs_review_count": 0,
 		}))
 	})
 	protected.Get("/receipts/", func(c *fiber.Ctx) error {
-		return c.JSON(handlers.SuccessResponse(fiber.Map{
+		return c.JSON(api.SuccessResponse(fiber.Map{
 			"receipts": []interface{}{}, "total": 0, "limit": 20, "offset": 0,
 		}))
 	})
@@ -107,13 +107,13 @@ func newTestApp() (*fiber.App, string) {
 		return c.SendString("Vendor,Amount,Category,Date,Status\n")
 	})
 	protected.Get("/exceptions/", func(c *fiber.Ctx) error {
-		return c.JSON(handlers.SuccessResponse([]interface{}{}))
+		return c.JSON(api.SuccessResponse([]interface{}{}))
 	})
 	protected.Post("/exceptions/:id/resolve", func(c *fiber.Ctx) error {
-		return c.JSON(handlers.SuccessResponse(fiber.Map{"id": c.Params("id"), "status": "resolved"}))
+		return c.JSON(api.SuccessResponse(fiber.Map{"id": c.Params("id"), "status": "resolved"}))
 	})
 	protected.Get("/rules/", func(c *fiber.Ctx) error {
-		return c.JSON(handlers.SuccessResponse([]interface{}{}))
+		return c.JSON(api.SuccessResponse([]interface{}{}))
 	})
 	protected.Post("/rules/", func(c *fiber.Ctx) error {
 		var req struct {
@@ -123,20 +123,20 @@ func newTestApp() (*fiber.App, string) {
 			ActionValue    string `json:"action_value"`
 		}
 		if err := c.BodyParser(&req); err != nil {
-			return handlers.SendError(c, fiber.StatusBadRequest, "invalid request body")
+			return api.SendError(c, fiber.StatusBadRequest, "invalid request body")
 		}
 		if req.ConditionType == "" || req.ConditionValue == "" || req.ActionType == "" || req.ActionValue == "" {
-			return handlers.SendError(c, fiber.StatusBadRequest, "all fields are required")
+			return api.SendError(c, fiber.StatusBadRequest, "all fields are required")
 		}
 		validCT := map[string]bool{"vendor": true, "category": true, "amount_range": true}
 		if !validCT[req.ConditionType] {
-			return handlers.SendError(c, fiber.StatusBadRequest, "invalid condition_type")
+			return api.SendError(c, fiber.StatusBadRequest, "invalid condition_type")
 		}
 		validAT := map[string]bool{"set_category": true, "ignore": true, "recurring": true}
 		if !validAT[req.ActionType] {
-			return handlers.SendError(c, fiber.StatusBadRequest, "invalid action_type")
+			return api.SendError(c, fiber.StatusBadRequest, "invalid action_type")
 		}
-		return c.Status(fiber.StatusCreated).JSON(handlers.SuccessResponse(req))
+		return c.Status(fiber.StatusCreated).JSON(api.SuccessResponse(req))
 	})
 
 	return app, token
@@ -398,3 +398,5 @@ func TestErrorResponseFormat(t *testing.T) {
 		t.Error("Error response missing 'error' field")
 	}
 }
+
+

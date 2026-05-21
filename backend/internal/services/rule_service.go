@@ -9,15 +9,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/db"
 	"receiptmind-backend/internal/models"
 )
 
 type RuleService struct {
-	db *database.Database
+	db *db.Database
 }
 
-func NewRuleService(db *database.Database) *RuleService {
+func NewRuleService(db *db.Database) *RuleService {
 	return &RuleService{db: db}
 }
 
@@ -237,3 +237,5 @@ func normalizeVendor(vendor string) string {
 	vendor = nonVendorChars.ReplaceAllString(vendor, " ")
 	return strings.Join(strings.Fields(vendor), " ")
 }
+
+

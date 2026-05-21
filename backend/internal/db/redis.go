@@ -1,4 +1,4 @@
-package database
+package db
 
 import (
 	"context"
@@ -63,3 +63,5 @@ func (r *RedisClient) Close() error {
 	log.Info().Msg("Redis connection closed")
 	return nil
 }
+
+

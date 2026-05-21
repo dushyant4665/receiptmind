@@ -1,4 +1,4 @@
-package handlers
+package api
 
 import (
 	"context"
@@ -13,20 +13,20 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"receiptmind-backend/internal/config"
-	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/db"
 	"receiptmind-backend/internal/models"
 	"receiptmind-backend/internal/services"
 	"receiptmind-backend/pkg/utils"
 )
 
 type AuthHandler struct {
-	DB           *database.Database
+	DB           *db.Database
 	JWTService   *services.JWTService
 	EmailService *services.EmailService
 	Config       *config.Config
 }
 
-func NewAuthHandler(db *database.Database, jwtService *services.JWTService, emailService *services.EmailService, cfg *config.Config) *AuthHandler {
+func NewAuthHandler(db *db.Database, jwtService *services.JWTService, emailService *services.EmailService, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{DB: db, JWTService: jwtService, EmailService: emailService, Config: cfg}
 }
 

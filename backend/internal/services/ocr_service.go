@@ -79,3 +79,5 @@ func cleanOCRText(text string) string {
 
 	return strings.TrimSpace(blankRE.ReplaceAllString(strings.Join(cleaned, "\n"), "\n\n"))
 }
+
+

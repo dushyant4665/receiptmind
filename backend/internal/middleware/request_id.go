@@ -35,3 +35,5 @@ func LoggerWithContext(c *fiber.Ctx) zerolog.Logger {
 		Str("ip", c.IP()).
 		Logger()
 }
+
+

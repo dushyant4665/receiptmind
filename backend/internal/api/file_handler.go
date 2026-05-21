@@ -1,4 +1,4 @@
-package handlers
+package api
 
 import (
 	"context"
@@ -10,16 +10,16 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 
-	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/db"
 	"receiptmind-backend/internal/services"
 )
 
 type FileHandler struct {
-	DB         *database.Database
+	DB         *db.Database
 	PDFService *services.PDFService
 }
 
-func NewFileHandler(db *database.Database, pdfSvc *services.PDFService) *FileHandler {
+func NewFileHandler(db *db.Database, pdfSvc *services.PDFService) *FileHandler {
 	return &FileHandler{
 		DB:         db,
 		PDFService: pdfSvc,
@@ -91,3 +91,4 @@ func (h *FileHandler) servePDFThumbnail(c *fiber.Ctx, pdfPath string) error {
 	c.Set("Content-Type", "image/png")
 	return c.Send(data[0]) // Return first page as thumbnail
 }
+

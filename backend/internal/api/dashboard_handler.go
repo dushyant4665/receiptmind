@@ -1,4 +1,4 @@
-package handlers
+package api
 
 import (
 	"context"
@@ -10,15 +10,15 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 
-	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/db"
 )
 
 type DashboardHandler struct {
-	DB    *database.Database
+	DB    *db.Database
 	Redis *redis.Client
 }
 
-func NewDashboardHandler(db *database.Database, redisClient *redis.Client) *DashboardHandler {
+func NewDashboardHandler(db *db.Database, redisClient *redis.Client) *DashboardHandler {
 	return &DashboardHandler{DB: db, Redis: redisClient}
 }
 
@@ -109,3 +109,5 @@ func (h *DashboardHandler) GetStats(c *fiber.Ctx) error {
 
 	return c.JSON(SuccessResponse(stats))
 }
+
+

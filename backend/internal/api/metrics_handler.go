@@ -1,4 +1,4 @@
-package handlers
+package api
 
 import (
 	"context"
@@ -6,14 +6,14 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
 
-	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/db"
 )
 
 type MetricsHandler struct {
-	DB *database.Database
+	DB *db.Database
 }
 
-func NewMetricsHandler(db *database.Database) *MetricsHandler {
+func NewMetricsHandler(db *db.Database) *MetricsHandler {
 	return &MetricsHandler{DB: db}
 }
 
@@ -101,3 +101,5 @@ func (h *MetricsHandler) GetProcessingTimes(c *fiber.Ctx) error {
 		Count:          count,
 	}))
 }
+
+

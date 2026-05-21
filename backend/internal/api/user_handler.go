@@ -1,4 +1,4 @@
-package handlers
+package api
 
 import (
 	"context"
@@ -7,15 +7,15 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 
-	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/db"
 	"receiptmind-backend/internal/models"
 )
 
 type UserHandler struct {
-	DB *database.Database
+	DB *db.Database
 }
 
-func NewUserHandler(db *database.Database) *UserHandler {
+func NewUserHandler(db *db.Database) *UserHandler {
 	return &UserHandler{DB: db}
 }
 
@@ -64,3 +64,5 @@ func (h *UserHandler) UpdateMe(c *fiber.Ctx) error {
 
 	return h.GetMe(c)
 }
+
+

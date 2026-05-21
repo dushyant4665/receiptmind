@@ -229,3 +229,5 @@ func (s *StorageService) DeleteFile(ctx context.Context, filePath string) error 
 	log.Info().Str("path", filePath).Msg("File deleted from storage")
 	return nil
 }
+
+

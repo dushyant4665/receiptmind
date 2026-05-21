@@ -1,4 +1,4 @@
-package handlers
+package api
 
 import (
 	"github.com/gofiber/fiber/v2"
@@ -31,3 +31,5 @@ func SendSuccess(c *fiber.Ctx, data interface{}) error {
 func SendError(c *fiber.Ctx, status int, err string) error {
 	return c.Status(status).JSON(ErrorResponse(err))
 }
+
+

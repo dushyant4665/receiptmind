@@ -10,14 +10,15 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"receiptmind-backend/internal/config"
-	"receiptmind-backend/internal/database"
-	"receiptmind-backend/internal/server"
+	"receiptmind-backend/internal/db"
 	"receiptmind-backend/internal/services"
+	"receiptmind-backend/internal/server"
 	"receiptmind-backend/pkg/logger"
 )
 
 func main() {
-	logger.Init(os.Getenv("ENVIRONMENT"))
+	env := os.Getenv("ENVIRONMENT")
+	logger.Init(env)
 
 	cfg := config.Load()
 
@@ -27,30 +28,30 @@ func main() {
 
 	ctx := context.Background()
 
-	db, err := database.New(ctx, cfg)
+	database, err := db.New(ctx, cfg)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}
-	defer db.Close()
+	defer database.Close()
 
-	if err := database.RunMigrations(ctx, db); err != nil {
+	if err := db.RunMigrations(ctx, database); err != nil {
 		log.Fatal().Err(err).Msg("Failed to run migrations")
 	}
 
-	redis, err := database.NewRedis(ctx, cfg.RedisURL)
+	redis, err := db.NewRedis(ctx, cfg.RedisURL)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to Redis")
 	}
 	defer redis.Close()
 
-	srv := server.New(cfg, db, redis)
+	srv := server.New(cfg, database, redis)
 
 	queueService := services.NewQueueService(redis.Client)
 	aiService := services.NewAIService(cfg)
-	exceptionService := services.NewExceptionService(db)
-	ruleService := services.NewRuleService(db)
+	exceptionService := services.NewExceptionService(database)
+	ruleService := services.NewRuleService(database)
 	storageService := services.NewStorageService(cfg)
-	worker := services.NewWorker(queueService, db, aiService, exceptionService, ruleService, storageService, redis.Client, cfg.WorkerConcurrency)
+	worker := services.NewWorker(queueService, database, aiService, exceptionService, ruleService, storageService, redis.Client, cfg.WorkerConcurrency)
 
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	defer workerCancel()
@@ -79,8 +80,9 @@ func main() {
 		log.Error().Err(err).Msg("Server shutdown error")
 	}
 
-	db.Close()
+	database.Close()
 	redis.Close()
 
 	log.Info().Msg("Server stopped cleanly")
 }
+

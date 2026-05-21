@@ -8,7 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/redis/go-redis/v9"
 
-	"receiptmind-backend/internal/handlers"
+	"receiptmind-backend/internal/api"
 )
 
 func RateLimit(redisClient *redis.Client, prefix string, maxRequests int, window time.Duration) fiber.Handler {
@@ -31,7 +31,7 @@ func RateLimit(redisClient *redis.Client, prefix string, maxRequests int, window
 		}
 
 		if count > int64(maxRequests) {
-			return c.Status(fiber.StatusTooManyRequests).JSON(handlers.ErrorResponse(
+			return c.Status(fiber.StatusTooManyRequests).JSON(api.ErrorResponse(
 				fmt.Sprintf("rate limit exceeded: max %d requests per %v", maxRequests, window),
 			))
 		}
@@ -42,3 +42,5 @@ func RateLimit(redisClient *redis.Client, prefix string, maxRequests int, window
 		return c.Next()
 	}
 }
+
+

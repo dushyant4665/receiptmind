@@ -30,3 +30,5 @@ func Init(environment string) {
 		Str("environment", environment).
 		Msg("Logger initialized")
 }
+
+

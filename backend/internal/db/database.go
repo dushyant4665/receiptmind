@@ -1,4 +1,4 @@
-package database
+package db
 
 import (
 	"context"
@@ -52,3 +52,5 @@ func (db *Database) Close() {
 	db.Pool.Close()
 	log.Info().Msg("Database connection pool closed")
 }
+
+

@@ -1,4 +1,4 @@
-package handlers
+package api
 
 import (
 	"context"
@@ -9,18 +9,18 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog/log"
 
-	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/db"
 	"receiptmind-backend/internal/models"
 	"receiptmind-backend/internal/services"
 )
 
 type ExceptionHandler struct {
-	DB               *database.Database
+	DB               *db.Database
 	ExceptionService *services.ExceptionService
 	RuleService      *services.RuleService
 }
 
-func NewExceptionHandler(db *database.Database, exceptionSvc *services.ExceptionService, ruleSvc *services.RuleService) *ExceptionHandler {
+func NewExceptionHandler(db *db.Database, exceptionSvc *services.ExceptionService, ruleSvc *services.RuleService) *ExceptionHandler {
 	return &ExceptionHandler{
 		DB:               db,
 		ExceptionService: exceptionSvc,
@@ -120,3 +120,4 @@ func (h *ExceptionHandler) ResolveException(c *fiber.Ctx) error {
 
 	return c.JSON(SuccessResponse(fiber.Map{"id": exceptionID, "status": "resolved"}))
 }
+

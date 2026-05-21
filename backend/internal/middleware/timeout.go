@@ -12,3 +12,5 @@ func RequestTimeout(d time.Duration) fiber.Handler {
 		return c.Next()
 	}
 }
+
+

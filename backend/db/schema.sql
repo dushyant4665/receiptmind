@@ -224,3 +224,17 @@ CREATE INDEX IF NOT EXISTS idx_verification_tokens_hash ON verification_tokens(t
 CREATE INDEX IF NOT EXISTS idx_verification_tokens_user ON verification_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_hash ON password_reset_tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+
+CREATE TABLE IF NOT EXISTS pending_registrations (
+    id UUID,
+    token_hash TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    organization_name TEXT NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE pending_registrations ADD COLUMN IF NOT EXISTS id UUID;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_registrations_email_unique ON pending_registrations(email);
+CREATE INDEX IF NOT EXISTS idx_pending_registrations_email ON pending_registrations(email);

@@ -1,4 +1,4 @@
-package handlers
+package api
 
 import (
 	"context"
@@ -6,17 +6,17 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog/log"
 
-	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/db"
 	"receiptmind-backend/internal/models"
 	"receiptmind-backend/internal/services"
 )
 
 type RuleHandler struct {
-	DB          *database.Database
+	DB          *db.Database
 	RuleService *services.RuleService
 }
 
-func NewRuleHandler(db *database.Database, ruleSvc *services.RuleService) *RuleHandler {
+func NewRuleHandler(db *db.Database, ruleSvc *services.RuleService) *RuleHandler {
 	return &RuleHandler{
 		DB:          db,
 		RuleService: ruleSvc,
@@ -69,3 +69,5 @@ func (h *RuleHandler) ListRules(c *fiber.Ctx) error {
 
 	return c.JSON(SuccessResponse(rules))
 }
+
+

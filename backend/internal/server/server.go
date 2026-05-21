@@ -7,9 +7,9 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
+	"receiptmind-backend/internal/api"
 	"receiptmind-backend/internal/config"
-	"receiptmind-backend/internal/database"
-	"receiptmind-backend/internal/handlers"
+	"receiptmind-backend/internal/db"
 	"receiptmind-backend/internal/middleware"
 	"receiptmind-backend/internal/services"
 )
@@ -17,8 +17,8 @@ import (
 type Server struct {
 	App              *fiber.App
 	Config           *config.Config
-	DB               *database.Database
-	Redis            *database.RedisClient
+	DB               *db.Database
+	Redis            *db.RedisClient
 	JWTService       *services.JWTService
 	StorageService   *services.StorageService
 	QueueService     *services.QueueService
@@ -29,7 +29,7 @@ type Server struct {
 	EmailService     *services.EmailService
 }
 
-func New(cfg *config.Config, db *database.Database, redis *database.RedisClient) *Server {
+func New(cfg *config.Config, database *db.Database, redis *db.RedisClient) *Server {
 	app := fiber.New(fiber.Config{
 		AppName:               "ReceiptMind API",
 		ErrorHandler:          errorHandler,
@@ -55,15 +55,15 @@ func New(cfg *config.Config, db *database.Database, redis *database.RedisClient)
 	storageService := services.NewStorageService(cfg)
 	queueService := services.NewQueueService(redis.Client)
 	aiService := services.NewAIService(cfg)
-	exceptionService := services.NewExceptionService(db)
-	ruleService := services.NewRuleService(db)
+	exceptionService := services.NewExceptionService(database)
+	ruleService := services.NewRuleService(database)
 	pdfService := services.NewPDFService()
 	emailService := services.NewEmailService(cfg)
 
 	srv := &Server{
 		App:              app,
 		Config:           cfg,
-		DB:               db,
+		DB:               database,
 		Redis:            redis,
 		JWTService:       jwtService,
 		StorageService:   storageService,
@@ -81,16 +81,16 @@ func New(cfg *config.Config, db *database.Database, redis *database.RedisClient)
 }
 
 func (s *Server) setupRoutes() {
-	healthHandler := handlers.NewHealthHandler(s.DB, s.Redis)
-	authHandler := handlers.NewAuthHandler(s.DB, s.JWTService, s.EmailService, s.Config)
-	userHandler := handlers.NewUserHandler(s.DB)
-	receiptHandler := handlers.NewReceiptHandler(s.DB, s.Config, s.StorageService, s.QueueService, s.ExceptionService, s.RuleService, s.Redis.Client)
-	exceptionHandler := handlers.NewExceptionHandler(s.DB, s.ExceptionService, s.RuleService)
-	ruleHandler := handlers.NewRuleHandler(s.DB, s.RuleService)
-	exportHandler := handlers.NewExportHandler(s.DB)
-	dashboardHandler := handlers.NewDashboardHandler(s.DB, s.Redis.Client)
-	fileHandler := handlers.NewFileHandler(s.DB, s.PDFService)
-	metricsHandler := handlers.NewMetricsHandler(s.DB)
+	healthHandler := api.NewHealthHandler(s.DB, s.Redis)
+	authHandler := api.NewAuthHandler(s.DB, s.JWTService, s.EmailService, s.Config)
+	userHandler := api.NewUserHandler(s.DB)
+	receiptHandler := api.NewReceiptHandler(s.DB, s.Config, s.StorageService, s.QueueService, s.ExceptionService, s.RuleService, s.Redis.Client)
+	exceptionHandler := api.NewExceptionHandler(s.DB, s.ExceptionService, s.RuleService)
+	ruleHandler := api.NewRuleHandler(s.DB, s.RuleService)
+	exportHandler := api.NewExportHandler(s.DB)
+	dashboardHandler := api.NewDashboardHandler(s.DB, s.Redis.Client)
+	fileHandler := api.NewFileHandler(s.DB, s.PDFService)
+	metricsHandler := api.NewMetricsHandler(s.DB)
 
 	s.App.Get("/health", healthHandler.Health)
 	s.App.Get("/ready", healthHandler.Ready)
@@ -153,5 +153,6 @@ func errorHandler(c *fiber.Ctx, err error) error {
 		code = e.Code
 	}
 
-	return c.Status(code).JSON(handlers.ErrorResponse(err.Error()))
+	return c.Status(code).JSON(api.ErrorResponse(err.Error()))
 }
+

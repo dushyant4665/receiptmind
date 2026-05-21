@@ -41,3 +41,5 @@ func main() {
 
 	fmt.Println("Table pending_registrations created successfully.")
 }
+
+

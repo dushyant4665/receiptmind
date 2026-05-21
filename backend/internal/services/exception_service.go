@@ -8,15 +8,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 
-	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/db"
 	"receiptmind-backend/internal/models"
 )
 
 type ExceptionService struct {
-	db *database.Database
+	db *db.Database
 }
 
-func NewExceptionService(db *database.Database) *ExceptionService {
+func NewExceptionService(db *db.Database) *ExceptionService {
 	return &ExceptionService{db: db}
 }
 
@@ -198,3 +198,5 @@ func (e *ExceptionService) GetByReceiptID(ctx context.Context, receiptID, orgID 
 
 	return exceptions, nil
 }
+
+

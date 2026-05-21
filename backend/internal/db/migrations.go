@@ -1,4 +1,4 @@
-package database
+package db
 
 import (
 	"context"
@@ -361,6 +361,7 @@ func RunMigrations(ctx context.Context, db *Database) error {
 			PRIMARY KEY (organization_id, digest_date)
 		)`,
 		`CREATE TABLE IF NOT EXISTS pending_registrations (
+			id UUID,
 			token_hash TEXT PRIMARY KEY,
 			email TEXT NOT NULL,
 			password_hash TEXT NOT NULL,
@@ -368,6 +369,8 @@ func RunMigrations(ctx context.Context, db *Database) error {
 			expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 		)`,
+		`ALTER TABLE pending_registrations ADD COLUMN IF NOT EXISTS id UUID`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_pending_registrations_email_unique ON pending_registrations(email)`,
 		`CREATE INDEX IF NOT EXISTS idx_pending_registrations_email ON pending_registrations(email)`,
 	}
 
@@ -381,3 +384,5 @@ func RunMigrations(ctx context.Context, db *Database) error {
 	log.Info().Msg("Database migrations completed")
 	return nil
 }
+
+

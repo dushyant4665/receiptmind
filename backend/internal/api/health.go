@@ -1,19 +1,19 @@
-package handlers
+package api
 
 import (
 	"context"
 
 	"github.com/gofiber/fiber/v2"
 
-	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/db"
 )
 
 type HealthHandler struct {
-	DB    *database.Database
-	Redis *database.RedisClient
+	DB    *db.Database
+	Redis *db.RedisClient
 }
 
-func NewHealthHandler(db *database.Database, redis *database.RedisClient) *HealthHandler {
+func NewHealthHandler(db *db.Database, redis *db.RedisClient) *HealthHandler {
 	return &HealthHandler{DB: db, Redis: redis}
 }
 
@@ -54,3 +54,5 @@ func (h *HealthHandler) Ready(c *fiber.Ctx) error {
 
 	return c.JSON(SuccessResponse(fiber.Map{"status": "ready"}))
 }
+
+

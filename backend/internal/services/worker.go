@@ -10,7 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 
-	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/db"
 	"receiptmind-backend/internal/models"
 )
 
@@ -18,7 +18,7 @@ const maxRetries = 3
 
 type Worker struct {
 	queue            *QueueService
-	db               *database.Database
+	db               *db.Database
 	aiService        *AIService
 	exceptionService *ExceptionService
 	ruleService      *RuleService
@@ -28,7 +28,7 @@ type Worker struct {
 	aiLimiter        chan struct{}
 }
 
-func NewWorker(queue *QueueService, db *database.Database, aiSvc *AIService, exceptionSvc *ExceptionService, ruleSvc *RuleService, storageSvc *StorageService, redisClient *redis.Client, concurrency int) *Worker {
+func NewWorker(queue *QueueService, db *db.Database, aiSvc *AIService, exceptionSvc *ExceptionService, ruleSvc *RuleService, storageSvc *StorageService, redisClient *redis.Client, concurrency int) *Worker {
 	if concurrency < 1 {
 		concurrency = 5
 	}
@@ -363,3 +363,5 @@ func finalConfidence(aiConfidence, validationConfidence float64) float64 {
 	}
 	return final
 }
+
+

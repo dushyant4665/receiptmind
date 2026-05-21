@@ -1,4 +1,4 @@
-package handlers
+package api
 
 import (
 	"bufio"
@@ -22,13 +22,13 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"receiptmind-backend/internal/config"
-	"receiptmind-backend/internal/database"
+	"receiptmind-backend/internal/db"
 	"receiptmind-backend/internal/models"
 	"receiptmind-backend/internal/services"
 )
 
 type ReceiptHandler struct {
-	DB               *database.Database
+	DB               *db.Database
 	Config           *config.Config
 	StorageService   *services.StorageService
 	QueueService     *services.QueueService
@@ -37,7 +37,7 @@ type ReceiptHandler struct {
 	Redis            *redis.Client
 }
 
-func NewReceiptHandler(db *database.Database, cfg *config.Config, storageSvc *services.StorageService, queueSvc *services.QueueService, exceptionSvc *services.ExceptionService, ruleSvc *services.RuleService, redisClient *redis.Client) *ReceiptHandler {
+func NewReceiptHandler(db *db.Database, cfg *config.Config, storageSvc *services.StorageService, queueSvc *services.QueueService, exceptionSvc *services.ExceptionService, ruleSvc *services.RuleService, redisClient *redis.Client) *ReceiptHandler {
 	return &ReceiptHandler{
 		DB:               db,
 		Config:           cfg,
@@ -652,3 +652,4 @@ func (h *ReceiptHandler) mapReceipt(r models.Receipt) fiber.Map {
 		"created_at":      r.CreatedAt,
 	}
 }
+
