@@ -143,6 +143,9 @@ func (q *QueueService) Dequeue(ctx context.Context) (*QueueJob, error) {
 
 	result, err := q.client.BRPop(ctx, 5*time.Second, highQueueKey, queueKey, lowQueueKey).Result()
 	if err != nil {
+		if err == redis.Nil {
+			return nil, redis.Nil
+		}
 		return nil, fmt.Errorf("failed to pop job from queue: %w", err)
 	}
 
