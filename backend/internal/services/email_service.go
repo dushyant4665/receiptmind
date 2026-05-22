@@ -1,13 +1,9 @@
 package services
 
 import (
-	"bytes"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net"
-	"net/http"
 	"net/smtp"
 	"net/textproto"
 	"strings"
@@ -28,9 +24,6 @@ func NewEmailService(cfg *config.Config) *EmailService {
 
 func (s *EmailService) sendEmail(to string, subject, body string) error {
 	if s.Config.SMTPHost == "" || s.Config.SMTPUser == "" || s.Config.SMTPPass == "" {
-		if s.Config.ResendAPIKey != "" {
-			return s.sendViaResend(to, subject, body)
-		}
 		return fmt.Errorf("SMTP is not configured")
 	}
 
@@ -43,7 +36,8 @@ func (s *EmailService) sendEmail(to string, subject, body string) error {
 		envelopeFrom = s.Config.SMTPUser
 	}
 
-	auth := smtp.PlainAuth("", s.Config.SMTPUser, s.Config.SMTPPass, s.Config.SMTPHost)
+	smtpPassword := strings.ReplaceAll(strings.TrimSpace(s.Config.SMTPPass), " ", "")
+	auth := smtp.PlainAuth("", s.Config.SMTPUser, smtpPassword, s.Config.SMTPHost)
 	
 	msg := fmt.Sprintf("From: %s\r\n"+
 		"To: %s\r\n"+
@@ -55,8 +49,6 @@ func (s *EmailService) sendEmail(to string, subject, body string) error {
 
 	addr := fmt.Sprintf("%s:%d", s.Config.SMTPHost, s.Config.SMTPPort)
 
-	// Port 465 is for implicit SSL/TLS.
-	// Port 587 is for STARTTLS (standard).
 	if s.Config.SMTPPort == 465 {
 		return s.sendWithTimeout(func() error {
 			return s.sendEmailWithTLS(addr, envelopeFrom, to, msg, auth)
@@ -68,68 +60,10 @@ func (s *EmailService) sendEmail(to string, subject, body string) error {
 	})
 	if err != nil {
 		log.Error().Err(err).Str("to", to).Msg("Failed to send email via STARTTLS SMTP")
-		if s.Config.ResendAPIKey != "" {
-			log.Warn().Str("to", to).Msg("Falling back to Resend after SMTP failure")
-			return s.sendViaResend(to, subject, body)
-		}
 		return err
 	}
 
 	log.Info().Str("to", to).Msg("Email sent successfully via SMTP")
-	return nil
-}
-
-func (s *EmailService) sendViaResend(to string, subject, body string) error {
-	from := s.Config.EmailFrom
-	if from == "" {
-		from = s.Config.SMTPFrom
-	}
-	if from == "" {
-		from = "ReceiptMind <onboarding@resend.dev>"
-	}
-
-	// Resend rejects unverified public mailbox domains like gmail.com as sender domains.
-	// Use the Resend-managed onboarding sender until a custom domain is verified.
-	fromAddress := extractEmailAddress(from)
-	if strings.HasSuffix(strings.ToLower(fromAddress), "@gmail.com") {
-		log.Warn().
-			Str("configured_from", from).
-			Msg("Resend sender uses gmail.com, falling back to onboarding@resend.dev until a domain is verified")
-		from = "ReceiptMind <onboarding@resend.dev>"
-	}
-
-	payload := map[string]interface{}{
-		"from":    from,
-		"to":      []string{to},
-		"subject": subject,
-		"html":    body,
-	}
-
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal resend payload: %w", err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, "https://api.resend.com/emails", bytes.NewReader(data))
-	if err != nil {
-		return fmt.Errorf("failed to create resend request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+s.Config.ResendAPIKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("resend request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("resend returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
-	}
-
-	log.Info().Str("to", to).Msg("Email sent successfully via Resend")
 	return nil
 }
 
@@ -139,7 +73,7 @@ func (s *EmailService) sendWithTimeout(fn func() error) error {
 		result <- fn()
 	}()
 
-	timeout := 4 * time.Second
+	timeout := 8 * time.Second
 	select {
 	case err := <-result:
 		return err
