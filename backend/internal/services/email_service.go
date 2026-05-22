@@ -85,7 +85,17 @@ func (s *EmailService) sendViaResend(to string, subject, body string) error {
 		from = s.Config.SMTPFrom
 	}
 	if from == "" {
-		return fmt.Errorf("EMAIL_FROM or SMTP_FROM is required for Resend")
+		from = "ReceiptMind <onboarding@resend.dev>"
+	}
+
+	// Resend rejects unverified public mailbox domains like gmail.com as sender domains.
+	// Use the Resend-managed onboarding sender until a custom domain is verified.
+	fromAddress := extractEmailAddress(from)
+	if strings.HasSuffix(strings.ToLower(fromAddress), "@gmail.com") {
+		log.Warn().
+			Str("configured_from", from).
+			Msg("Resend sender uses gmail.com, falling back to onboarding@resend.dev until a domain is verified")
+		from = "ReceiptMind <onboarding@resend.dev>"
 	}
 
 	payload := map[string]interface{}{
@@ -129,7 +139,7 @@ func (s *EmailService) sendWithTimeout(fn func() error) error {
 		result <- fn()
 	}()
 
-	timeout := 12 * time.Second
+	timeout := 4 * time.Second
 	select {
 	case err := <-result:
 		return err
