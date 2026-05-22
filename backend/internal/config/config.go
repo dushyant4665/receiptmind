@@ -31,6 +31,8 @@ type Config struct {
 	SMTPUser          string
 	SMTPPass          string
 	SMTPFrom          string
+	ResendAPIKey      string
+	EmailFrom         string
 }
 
 func Load() *Config {
@@ -56,12 +58,14 @@ func Load() *Config {
 		GeminiKey:         getEnv("GEMINI_API_KEY", ""),
 		WorkerConcurrency: getEnvInt("WORKER_CONCURRENCY", 5),
 		RequestTimeout:    time.Duration(getEnvInt("REQUEST_TIMEOUT_SECONDS", 10)) * time.Second,
-		AppURL:            getEnv("APP_URL", getEnv("FRONTEND_URL", "http://localhost:3000")),
+		AppURL:            getEnv("APP_URL", getEnv("FRONTEND_URL", "https://receiptmind.vercel.app")),
 		SMTPHost:          getEnv("SMTP_HOST", "smtp.gmail.com"),
 		SMTPPort:          getEnvInt("SMTP_PORT", 587),
 		SMTPUser:          getEnv("SMTP_USERNAME", ""),
 		SMTPPass:          getEnv("SMTP_PASSWORD", ""),
 		SMTPFrom:          getEnv("SMTP_FROM", "ReceiptMind <noreply@receiptmind.com>"),
+		ResendAPIKey:      getEnv("RESEND_API_KEY", ""),
+		EmailFrom:         getEnv("EMAIL_FROM", getEnv("SMTP_FROM", "ReceiptMind <noreply@receiptmind.com>")),
 	}
 
 	if cfg.GeminiKey != "" {

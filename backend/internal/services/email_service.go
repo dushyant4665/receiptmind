@@ -1,9 +1,13 @@
 package services
 
 import (
+	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"net/smtp"
 	"net/textproto"
 	"strings"
@@ -24,6 +28,9 @@ func NewEmailService(cfg *config.Config) *EmailService {
 
 func (s *EmailService) sendEmail(to string, subject, body string) error {
 	if s.Config.SMTPHost == "" || s.Config.SMTPUser == "" || s.Config.SMTPPass == "" {
+		if s.Config.ResendAPIKey != "" {
+			return s.sendViaResend(to, subject, body)
+		}
 		return fmt.Errorf("SMTP is not configured")
 	}
 
@@ -61,10 +68,58 @@ func (s *EmailService) sendEmail(to string, subject, body string) error {
 	})
 	if err != nil {
 		log.Error().Err(err).Str("to", to).Msg("Failed to send email via STARTTLS SMTP")
+		if s.Config.ResendAPIKey != "" {
+			log.Warn().Str("to", to).Msg("Falling back to Resend after SMTP failure")
+			return s.sendViaResend(to, subject, body)
+		}
 		return err
 	}
 
 	log.Info().Str("to", to).Msg("Email sent successfully via SMTP")
+	return nil
+}
+
+func (s *EmailService) sendViaResend(to string, subject, body string) error {
+	from := s.Config.EmailFrom
+	if from == "" {
+		from = s.Config.SMTPFrom
+	}
+	if from == "" {
+		return fmt.Errorf("EMAIL_FROM or SMTP_FROM is required for Resend")
+	}
+
+	payload := map[string]interface{}{
+		"from":    from,
+		"to":      []string{to},
+		"subject": subject,
+		"html":    body,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal resend payload: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, "https://api.resend.com/emails", bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("failed to create resend request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+s.Config.ResendAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("resend request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("resend returned %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+
+	log.Info().Str("to", to).Msg("Email sent successfully via Resend")
 	return nil
 }
 
