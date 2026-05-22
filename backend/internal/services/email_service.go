@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"net/smtp"
+	"net/textproto"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog/log"
@@ -25,9 +27,13 @@ func (s *EmailService) sendEmail(to string, subject, body string) error {
 		return fmt.Errorf("SMTP is not configured")
 	}
 
-	from := s.Config.SMTPFrom
-	if from == "" {
-		from = s.Config.SMTPUser
+	fromHeader := s.Config.SMTPFrom
+	if fromHeader == "" {
+		fromHeader = s.Config.SMTPUser
+	}
+	envelopeFrom := extractEmailAddress(fromHeader)
+	if envelopeFrom == "" {
+		envelopeFrom = s.Config.SMTPUser
 	}
 
 	auth := smtp.PlainAuth("", s.Config.SMTPUser, s.Config.SMTPPass, s.Config.SMTPHost)
@@ -38,7 +44,7 @@ func (s *EmailService) sendEmail(to string, subject, body string) error {
 		"MIME-Version: 1.0\r\n"+
 		"Content-Type: text/html; charset=UTF-8\r\n"+
 		"\r\n"+
-		"%s\r\n", from, to, subject, body)
+		"%s\r\n", fromHeader, to, subject, body)
 
 	addr := fmt.Sprintf("%s:%d", s.Config.SMTPHost, s.Config.SMTPPort)
 
@@ -46,15 +52,15 @@ func (s *EmailService) sendEmail(to string, subject, body string) error {
 	// Port 587 is for STARTTLS (standard).
 	if s.Config.SMTPPort == 465 {
 		return s.sendWithTimeout(func() error {
-			return s.sendEmailWithTLS(addr, from, to, msg, auth)
+			return s.sendEmailWithTLS(addr, envelopeFrom, to, msg, auth)
 		})
 	}
 
 	err := s.sendWithTimeout(func() error {
-		return smtp.SendMail(addr, auth, s.Config.SMTPUser, []string{to}, []byte(msg))
+		return s.sendEmailWithStartTLS(addr, envelopeFrom, to, msg, auth)
 	})
 	if err != nil {
-		log.Error().Err(err).Str("to", to).Msg("Failed to send email via standard SMTP")
+		log.Error().Err(err).Str("to", to).Msg("Failed to send email via STARTTLS SMTP")
 		return err
 	}
 
@@ -127,6 +133,76 @@ func (s *EmailService) sendEmailWithTLS(addr, from, to, msg string, auth smtp.Au
 	}
 
 	return nil
+}
+
+func (s *EmailService) sendEmailWithStartTLS(addr, from, to, msg string, auth smtp.Auth) error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("split host/port failed: %w", err)
+	}
+
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("smtp dial failed: %w", err)
+	}
+	defer conn.Close()
+
+	client, err := smtp.NewClient(conn, host)
+	if err != nil {
+		return fmt.Errorf("smtp client creation failed: %w", err)
+	}
+	defer client.Quit()
+
+	if ok, _ := client.Extension("STARTTLS"); !ok {
+		return fmt.Errorf("smtp server does not support STARTTLS")
+	}
+
+	tlsConfig := &tls.Config{
+		ServerName: host,
+		MinVersion: tls.VersionTLS12,
+	}
+	if err := client.StartTLS(tlsConfig); err != nil {
+		return fmt.Errorf("starttls failed: %w", err)
+	}
+
+	if ok, _ := client.Extension("AUTH"); ok {
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("smtp auth failed: %w", err)
+		}
+	}
+
+	if err := client.Mail(from); err != nil {
+		return fmt.Errorf("mail from failed: %w", err)
+	}
+	if err := client.Rcpt(to); err != nil {
+		return fmt.Errorf("rcpt to failed: %w", err)
+	}
+
+	writer, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("data command failed: %w", err)
+	}
+	if _, err := writer.Write([]byte(msg)); err != nil {
+		return fmt.Errorf("message write failed: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("message close failed: %w", err)
+	}
+
+	return nil
+}
+
+func extractEmailAddress(value string) string {
+	addr, err := textproto.TrimString(value), error(nil)
+	_ = err
+	if strings.Contains(addr, "<") && strings.Contains(addr, ">") {
+		start := strings.Index(addr, "<")
+		end := strings.LastIndex(addr, ">")
+		if start >= 0 && end > start {
+			return strings.TrimSpace(addr[start+1 : end])
+		}
+	}
+	return strings.TrimSpace(addr)
 }
 
 func (s *EmailService) SendVerificationEmail(email, token string) error {
