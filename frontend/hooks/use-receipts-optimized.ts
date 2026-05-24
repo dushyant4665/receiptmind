@@ -64,7 +64,7 @@ function mapReceipt(r: BackendReceipt): Receipt {
     amount: r.amount == null ? null : Number(r.amount),
     receiptDate: r.receipt_date,
     category: r.category,
-    confidence: r.confidence,
+    confidence: r.confidence ?? null,
     createdAt: r.created_at,
     fileUrl: r.file_path,
     exceptions: r.exceptions?.map(mapException),
