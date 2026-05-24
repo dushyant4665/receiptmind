@@ -1,10 +1,10 @@
 # ReceiptMind Enterprise
 
-ReceiptMind is an intelligent expense automation and document extraction platform designed for finance teams, operations, and modern enterprises. By combining advanced AI models with reliable background processing, it eliminates manual data entry, guarantees high extraction accuracy through exception handling, and automates organizational workflows.
+ReceiptMind is an intelligent expense automation and document extraction platform designed for finance teams, operations, and modern enterprises. By combining advanced AI models with reliable processing, it eliminates manual data entry, guarantees high extraction accuracy through exception handling, and automates organizational workflows.
 
 ## Architecture
 
-The platform is built as a decoupled, multi-tenant application designed for performance, resilience, and horizontal scaling.
+The platform is built as a decoupled, multi-tenant application designed for performance, resilience, and easy deployment.
 
 ```mermaid
 graph TD
@@ -12,34 +12,27 @@ graph TD
     classDef client fill:#f9f9f9,stroke:#333,stroke-width:2px,color:#333
     classDef backend fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0284c7
     classDef database fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#db2777
-    classDef queue fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#d97706
     classDef ai fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#7c3aed
 
     %% Nodes
     Client["Next.js Frontend\n(App Router, Tailwind)"]:::client
     API["Node.js Backend\n(Express API)"]:::backend
-    Worker["Background Worker\n(Node.js Bull)"]:::backend
     DB[(PostgreSQL)]:::database
-    Redis[(Redis Queue)]:::queue
     Storage[("File Storage\n(Local/S3)")]:::database
     AI["Gemini / OpenRouter\n(LLM API)"]:::ai
 
     %% Edges
     Client -- "REST API (JWT)" --> API
     API -- "CRUD / Auth" --> DB
-    API -- "Enqueue Job" --> Redis
     API -- "Save File" --> Storage
-    Worker -- "Dequeue Job" --> Redis
-    Worker -- "Read File" --> Storage
-    Worker -- "Extract Data" --> AI
-    Worker -- "Update Status" --> DB
+    API -- "Extract Data" --> AI
+    API -- "Update Status" --> DB
 ```
 
 ### Component Details
 
-- **Frontend**: A Next.js 14 application utilising the App Router, Tailwind CSS, and React Query. The user interface prioritises minimal visual noise, fast page transitions, and structured datagrids for high-throughput expense management.
-- **Backend API**: A Node.js and Express REST API that handles authentication, multi-tenant scoping, receipt ingestion, rules management, and administrative operations.
-- **Queue and Background Worker**: Redis and Bull queue-based asynchronous processing. The API server accepts files instantly, delegates heavy document parsing and LLM calls to background processes, and updates database records in real-time.
+- **Frontend**: A Next.js 16 application utilising the App Router, Tailwind CSS, and React Query. The user interface prioritises minimal visual noise, fast page transitions, and structured datagrids for high-throughput expense management.
+- **Backend API**: A Node.js and Express REST API that handles authentication, multi-tenant scoping, receipt ingestion, rules management, and administrative operations. Receipts are processed immediately in the background without requiring a separate queue.
 - **Relational Storage**: PostgreSQL acts as the core database, storing relational structures for organizations, users, receipts, rules, and exception logs.
 
 ## Core Capabilities
@@ -55,7 +48,7 @@ graph TD
 
 ### Prerequisites
 
-You need PostgreSQL, Redis, and Node.js (version 18 or above) installed on your machine.
+You need PostgreSQL and Node.js (version 18 or above) installed on your machine.
 
 ### Setup Steps
 
@@ -66,7 +59,7 @@ You need PostgreSQL, Redis, and Node.js (version 18 or above) installed on your 
    ```
 
 2. **Database Settings**
-   Configure your PostgreSQL and Redis connections. Ensure your target PostgreSQL database is created.
+   Configure your PostgreSQL connection. Ensure your target PostgreSQL database is created.
 
 3. **Backend Configuration**
    Navigate to the backend directory, copy `.env.example` to `.env`, and fill in the required variables (including your database credentials and Gemini API key).
@@ -101,15 +94,16 @@ To spin up the entire system locally inside containerized environments:
 
 ### Backend (Render)
 
-The backend service is container-ready and designed to deploy on Render as a Web Service.
+The backend service is designed to deploy on Render as a Web Service.
 
 1. **New Web Service**: Connect your GitHub repository to Render.
 2. **Build Configuration**:
-   - Environment: Docker
-   - Dockerfile Path: `backend/Dockerfile`
+   - Environment: Node
+   - Root Directory: `backend`
+   - Build Command: `npm install`
+   - Start Command: `npm start`
 3. **Environment Variables**: Add your production values for:
    - `DATABASE_URL` (PostgreSQL)
-   - `REDIS_URL` (Redis instance)
    - `JWT_SECRET`
    - `GEMINI_API_KEY`
 4. **Health Check**: Configure `/health` as the monitoring endpoint.

@@ -2,13 +2,13 @@
 
 ## 1. System Architecture
 
-ReceiptMind follows a decoupled Microservices-lite architecture with a clear separation between the UI and the Backend.
+ReceiptMind follows a decoupled architecture with a clear separation between the UI and the Backend.
 
 ### 1.1 Technology Stack
-- **Frontend:** Next.js 15+ (App Router), TypeScript, React 19.
-- **Backend:** Go 1.22+, Fiber v2 (HTTP Framework).
-- **Database:** PostgreSQL (Primary), Redis (Queuing & Caching).
-- **Storage:** Supabase Storage (S3-compatible).
+- **Frontend:** Next.js 16+ (App Router), TypeScript, React 19.
+- **Backend:** Node.js 18+, Express.js.
+- **Database:** PostgreSQL (Primary).
+- **Storage:** Local or S3-compatible storage.
 - **AI:** Google Gemini 1.5 Flash (Primary), OpenAI GPT-4o (Fallback).
 - **Auth:** NextAuth.js (Frontend), JWT (Backend).
 
@@ -16,15 +16,15 @@ ReceiptMind follows a decoupled Microservices-lite architecture with a clear sep
 
 ### 2.1 API Design
 - **RESTful API:** JSON-based communication.
-- **Routing:** Fiber's group-based routing for versioning (`/api/v1`).
+- **Routing:** Express router-based routing.
 - **Middleware:** 
-  - `AuthMiddleware`: JWT verification and user context injection.
-  - `LoggerMiddleware`: Structured logging with Zerolog.
-  - `RecoverMiddleware`: Prevents server crashes on panics.
+  - `auth.js`: JWT verification and user context injection.
+  - `morgan`: HTTP request logging.
+  - `helmet`: Security headers.
+  - `cors`: Cross-origin resource sharing.
 
-### 2.2 Concurrency & Background Processing
-- **Worker Pattern:** Go's goroutines are used to process extraction jobs asynchronously.
-- **Task Queue:** Redis-backed queue ensures durability and scalability.
+### 2.2 Background Processing
+- **Immediate Processing:** No queue required - processing starts in background immediately using Node.js async capabilities.
 - **Idempotency:** File hashing prevents duplicate processing of the same document.
 
 ### 2.3 Database Schema (Canonical Model)
@@ -52,11 +52,10 @@ ReceiptMind follows a decoupled Microservices-lite architecture with a clear sep
 ## 4. Security & Compliance
 - **Data Isolation:** Every database query is scoped by `organization_id`.
 - **JWT Security:** HS256 signed tokens with short expiration.
-- **Input Validation:** Strict type checking in Go and TypeScript.
+- **Input Validation:** Strict type checking in TypeScript.
 - **Storage Security:** Private buckets with Signed URLs for document access.
 
 ## 5. Deployment & DevOps
-- **Backend:** Scalable Go binary (Dockerized).
+- **Backend:** Render Web Service (Node.js).
 - **Frontend:** Vercel or similar Edge-ready platform.
-- **CI/CD:** Automated testing (Go tests, Playwright for E2E).
-- **Monitoring:** Sentry for error tracking, Zerolog for structured backend logs.
+- **Monitoring:** Sentry for error tracking.

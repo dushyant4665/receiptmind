@@ -1,33 +1,28 @@
 # ReceiptMind Node.js Backend
 
-Migrated from Go to Node.js (Express).
-
 ## Features
 - Full Authentication (Register, Login, Email Verification, Password Reset)
 - Receipt Management (Upload, List, Edit, Delete, Bulk Export)
 - AI-powered Extraction (Gemini 1.5 Flash / OpenAI)
 - Rule Engine & Exception Tracking
 - Dashboard Statistics
-- Redis Caching
-- Background Processing (BullMQ)
+- Immediate Background Processing (no queue required)
 
 ## Tech Stack
 - **Runtime:** Node.js
 - **Framework:** Express.js
 - **Database:** PostgreSQL
-- **Cache & Queue:** Redis
 - **AI:** Google Gemini / OpenAI
 - **Mailer:** Nodemailer (SMTP)
 
 ## Project Structure
 ```
 src/
-├── config/      # DB, Redis configuration
+├── config/      # DB configuration
 ├── controllers/ # Request handlers
 ├── middleware/  # Auth and other middlewares
 ├── routes/      # API routes
-├── services/    # Business logic (AI, Email, Storage, JWT)
-├── workers/     # Background job processors
+├── services/    # Business logic (AI, Email, Storage, JWT, Receipt Processing)
 ├── app.js       # Express app setup
 └── index.js     # Entry point
 ```
