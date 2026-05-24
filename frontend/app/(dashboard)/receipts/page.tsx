@@ -83,7 +83,9 @@ export default function ReceiptsPage() {
       if ((previous === "processing" || previous === "pending") && finished) {
         if (receipt.status === "processed") toast.success(`${receipt.vendorName || "Receipt"} processed`);
         if (receipt.status === "needs_review") toast.warning(`${receipt.vendorName || "Receipt"} needs review`);
-        if (receipt.status === "failed") toast.error("Receipt processing failed");
+        if (receipt.status === "failed") {
+          toast.error(`Receipt processing failed${receipt.errorMessage ? `: ${receipt.errorMessage}` : ''}`);
+        }
       }
     }
 

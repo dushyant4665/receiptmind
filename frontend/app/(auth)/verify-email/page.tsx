@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -20,9 +20,13 @@ export default function VerifyEmailPage() {
   const [email, setEmail] = useState(params.get("email") ?? "");
   const [isResending, setIsResending] = useState(false);
   const [state, setState] = useState(token ? "Verifying your email..." : "Check your inbox");
+  const hasFetched = useRef(false);
 
   useEffect(() => {
     if (!token) return;
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+    
     let active = true;
     postApiData<VerifyResponse>("/auth/verify-email", { token })
       .then(async () => {

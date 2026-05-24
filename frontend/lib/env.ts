@@ -29,7 +29,7 @@ export function getApiUrl() {
   );
 
   if (!configured) {
-    return "http://localhost:8080";
+    return "http://localhost:3001";
   }
 
   return trimTrailingSlash(configured);

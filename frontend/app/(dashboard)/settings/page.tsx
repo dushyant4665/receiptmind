@@ -26,13 +26,13 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 animate-in">
       <div>
-        <h1 className="text-[24px] font-heading text-text-primary tracking-tight">Settings</h1>
+        <h1 className="text-2xl font-semibold text-text-primary tracking-tight">Settings</h1>
         <p className="mt-1 text-[13px] text-text-muted">Manage your profile and workspace</p>
       </div>
 
       <div className="grid gap-6">
-        <section className="rounded-lg border border-border-default bg-white p-5 shadow-xs max-w-2xl">
-          <h2 className="text-[13px] font-semibold text-text-primary">Profile</h2>
+        <section className="rounded-xl border border-border-subtle bg-white p-6 shadow-sm max-w-2xl">
+          <h2 className="text-[14px] font-semibold text-text-primary">Profile</h2>
           <div className="mt-4 space-y-4">
             <div>
               <Label htmlFor="name" className="mb-1.5 text-[12px] font-medium text-text-secondary">

@@ -37,9 +37,10 @@ export type Receipt = {
   amount?: number | null;
   receiptDate?: string | null;
   category?: string | null;
-  confidence?: number | null;
-  createdAt: string;
+  confidence: number | null;
   fileUrl?: string;
+  createdAt: string;
+  errorMessage?: string | null;
   exceptions?: Exception[];
 };
 

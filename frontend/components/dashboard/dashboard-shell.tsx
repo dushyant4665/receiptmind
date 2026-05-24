@@ -68,9 +68,12 @@ export function DashboardShell({ children, initialUser }: DashboardShellProps) {
 
         {/* AI Badge */}
         <div className="mx-4 mt-5 mb-1">
-          <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-amber-surface/60 border border-amber-border/40">
-            <Sparkles className="size-3.5 text-amber fill-amber/20" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-amber">AI Engine Active</span>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-bg-subtle/50 text-[11px] font-medium text-text-muted transition-colors hover:bg-bg-subtle hover:text-text-primary cursor-default">
+            <div className="relative flex size-2 items-center justify-center">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald opacity-20"></span>
+              <span className="relative inline-flex size-1.5 rounded-full bg-emerald"></span>
+            </div>
+            AI Engine Active
           </div>
         </div>
 

@@ -45,7 +45,7 @@ export default function ExceptionsPage() {
   return (
     <div className="space-y-6 animate-in">
       <div>
-        <h1 className="text-[24px] font-heading text-text-primary tracking-tight">
+        <h1 className="text-2xl font-semibold text-text-primary tracking-tight">
           Exceptions Inbox
         </h1>
         <p className="mt-1 text-[13px] text-text-muted">
@@ -53,18 +53,18 @@ export default function ExceptionsPage() {
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="rounded-lg border border-border-default bg-white p-4 shadow-xs">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-text-ghost">Open</p>
-          <p className="mt-1 text-[24px] font-heading text-text-primary">{openCount}</p>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="rounded-xl border border-border-subtle bg-white p-5 shadow-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-text-ghost">Open</p>
+          <p className="mt-2 text-3xl font-medium text-text-primary tracking-tight">{openCount}</p>
         </div>
-        <div className="rounded-lg border border-border-default bg-white p-4 shadow-xs">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-text-ghost">Resolved</p>
-          <p className="mt-1 text-[24px] font-heading text-emerald">{resolvedCount}</p>
+        <div className="rounded-xl border border-border-subtle bg-white p-5 shadow-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-text-ghost">Resolved</p>
+          <p className="mt-2 text-3xl font-medium text-emerald tracking-tight">{resolvedCount}</p>
         </div>
-        <div className="rounded-lg border border-border-default bg-white p-4 shadow-xs">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-text-ghost">Total</p>
-          <p className="mt-1 text-[24px] font-heading text-text-primary">{exceptions?.length ?? 0}</p>
+        <div className="rounded-xl border border-border-subtle bg-white p-5 shadow-sm">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-text-ghost">Total</p>
+          <p className="mt-2 text-3xl font-medium text-text-primary tracking-tight">{exceptions?.length ?? 0}</p>
         </div>
       </div>
 
@@ -102,34 +102,34 @@ export default function ExceptionsPage() {
       ) : (
         <div className="space-y-3">
           {filtered.map((exc) => (
-            <div key={exc.id} className="rounded-lg border border-border-default bg-white p-4 shadow-xs hover:shadow-sm transition-shadow">
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5">
-                  <AlertCircle className="size-4 text-amber" />
+            <div key={exc.id} className="group rounded-xl border border-border-subtle bg-white p-5 shadow-sm hover:shadow-md transition-all hover:border-border-default">
+              <div className="flex items-start gap-4">
+                <div className="mt-1">
+                  <AlertCircle className="size-5 text-amber" />
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2.5 flex-wrap">
                     <Badge
                       variant="secondary"
-                      className={cn("text-[10px]", typeColors[exc.type] || "bg-bg-subtle text-text-secondary")}
+                      className={cn("text-[11px] font-medium border-0", typeColors[exc.type] || "bg-bg-subtle text-text-secondary")}
                     >
                       {exc.type.replace(/_/g, " ")}
                     </Badge>
-                    <span className="text-[10px] text-text-ghost tabular-nums">
+                    <span className="text-[12px] text-text-ghost tabular-nums font-medium">
                       {new Date(exc.createdAt).toLocaleDateString()}
                     </span>
                   </div>
 
-                  <p className="mt-1.5 text-[13px] font-medium text-text-primary">
-                    {exc.field}: {exc.message}
+                  <p className="mt-2 text-sm text-text-primary">
+                    <span className="font-semibold">{exc.field}:</span> {exc.message}
                   </p>
                 </div>
 
                 {exc.status === "open" && (
                   <Button
                     size="sm"
-                    className="h-7 text-[11px] rounded-md shrink-0"
+                    className="h-8 text-[12px] rounded-lg shrink-0 font-medium transition-opacity opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                     onClick={() => handleResolve(exc.id)}
                   >
                     Resolve

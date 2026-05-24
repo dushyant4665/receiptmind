@@ -25,6 +25,7 @@ type BackendReceipt = {
   category?: string | null;
   confidence?: number | null;
   created_at: string;
+  error_message?: string | null;
   exceptions?: BackendException[];
 };
 
@@ -66,6 +67,7 @@ function mapReceipt(r: BackendReceipt): Receipt {
     createdAt: r.created_at,
     fileUrl: r.file_url ?? r.file_path,
     exceptions: r.exceptions?.map(mapException),
+    errorMessage: r.error_message,
   };
 }
 

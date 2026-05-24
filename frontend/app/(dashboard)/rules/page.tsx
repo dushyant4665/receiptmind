@@ -50,7 +50,7 @@ export default function RulesPage() {
     <div className="space-y-6 animate-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-[24px] font-heading text-text-primary tracking-tight">Rules</h1>
+          <h1 className="text-2xl font-semibold text-text-primary tracking-tight">Rules</h1>
           <p className="mt-1 text-[13px] text-text-muted">
             Automate categorization and processing of receipts
           </p>
@@ -75,7 +75,7 @@ export default function RulesPage() {
       </div>
 
       {/* Rules list */}
-      <section className="rounded-lg border border-border-default bg-white overflow-hidden shadow-xs">
+      <section className="rounded-xl border border-border-subtle bg-white overflow-hidden shadow-sm">
         {isLoading ? (
           <div className="p-8 text-center text-[12px] text-text-muted">Loading rules...</div>
         ) : rules && rules.length > 0 ? (
