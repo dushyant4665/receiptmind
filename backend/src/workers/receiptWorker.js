@@ -8,6 +8,11 @@ const ocrService = require('../services/ocrService');
 require('dotenv').config();
 
 const startWorker = () => {
+  if (!process.env.REDIS_URL) {
+    console.log('Redis not configured - worker not started');
+    return;
+  }
+
   const receiptQueue = new Queue('receipt-processing', process.env.REDIS_URL);
 
   receiptQueue.process(5, async (job) => {

@@ -7,9 +7,11 @@ const getStats = async (req, res) => {
   const cacheKey = `dashboard:${organizationId}`;
 
   try {
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return res.json(successResponse(JSON.parse(cached)));
+    if (redis) {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return res.json(successResponse(JSON.parse(cached)));
+      }
     }
 
     const { rows: totalRows } = await db.query(
@@ -59,7 +61,9 @@ const getStats = async (req, res) => {
       automation_rate: automationRate,
     };
 
-    await redis.setEx(cacheKey, 30, JSON.stringify(stats));
+    if (redis) {
+      await redis.setEx(cacheKey, 30, JSON.stringify(stats));
+    }
 
     res.json(successResponse(stats));
   } catch (error) {

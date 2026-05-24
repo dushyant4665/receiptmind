@@ -137,10 +137,13 @@ const listReceipts = async (req, res) => {
 
   try {
     const cacheKey = `receipts:${organizationId}:${limit}:${offset}:${search}:${status}:${start_date}:${end_date}:${min_amount}:${max_amount}`;
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      res.setHeader('X-Cache', 'HIT');
-      return res.json(JSON.parse(cached));
+    
+    if (redis) {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        res.setHeader('X-Cache', 'HIT');
+        return res.json(JSON.parse(cached));
+      }
     }
 
     let query = `SELECT r.id, r.organization_id, r.user_id, r.file_path, r.file_url, r.status,
@@ -231,9 +234,11 @@ const listReceipts = async (req, res) => {
       offset,
     };
 
-    await redis.setEx(cacheKey, 10, JSON.stringify(successResponse(data)));
+    if (redis) {
+      await redis.setEx(cacheKey, 10, JSON.stringify(successResponse(data)));
+    }
 
-    res.setHeader('X-Cache', 'MISS');
+    res.setHeader('X-Cache', redis ? 'MISS' : 'DISABLED');
     res.json(successResponse(data));
   } catch (error) {
     console.error('List receipts error:', error);
@@ -460,6 +465,9 @@ const listExpenses = async (req, res) => {
 };
 
 const invalidateCache = async (organizationId) => {
+  if (!redis) {
+    return;
+  }
   await redis.del(`dashboard:${organizationId}`);
   const keys = await redis.keys(`receipts:${organizationId}:*`);
   if (keys.length > 0) {
