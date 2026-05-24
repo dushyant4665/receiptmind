@@ -1,20 +1,20 @@
-import { UploadCloud, CheckCircle2, Download } from "lucide-react";
+import { Cpu, Download, UploadCloud } from "lucide-react";
 
 const steps = [
   {
     icon: UploadCloud,
-    title: "Upload & Queue",
-    description: "Drop receipts via the UI. Uploads are hashed to prevent duplicates, then pushed to a Redis Bull queue.",
+    title: "Upload",
+    description: "Drag and drop any receipt photo or PDF. Bulk upload up to 20 files at once.",
   },
   {
-    icon: CheckCircle2,
-    title: "AI Extract & Review",
-    description: "Gemini AI extracts data in the background. Low confidence results (<75%) are routed to the Exceptions Inbox.",
+    icon: Cpu,
+    title: "AI processing",
+    description: "Our AI extracts vendor, amount, date, category, and policy hints with 99.2% accuracy.",
   },
   {
     icon: Download,
-    title: "Categorize & Export",
-    description: "The Rules Engine auto-applies categories based on vendor names. Clean data is instantly ready for CSV export.",
+    title: "Download",
+    description: "Export clean CSV or Excel files, or send the structured data straight to your accounting stack.",
   },
 ];
 
@@ -22,29 +22,35 @@ export function HowItWorks() {
   return (
     <section
       id="workflow"
-      className="border-y border-border-subtle bg-bg-surface px-6 py-24 md:px-10"
+      className="border-y border-border-default bg-bg-surface px-4 py-20 md:px-8"
     >
-      <div className="mx-auto max-w-[1000px]">
-        <div className="mx-auto mb-16 max-w-[600px] text-center">
-          <h2 className="text-3xl font-semibold tracking-tight text-text-primary md:text-4xl">
-            How it actually works
+      <div className="mx-auto max-w-[860px]">
+        <div className="mx-auto mb-12 max-w-[520px] text-center">
+          <p className="inline-flex items-center rounded-[16px] border border-border-default px-3.5 py-1 text-[11px] font-medium uppercase tracking-[0.08em] text-text-muted">
+            Workflow
+          </p>
+          <h2 className="mt-5 font-heading text-[36px] leading-[1.12] tracking-[-0.2px] text-text-primary">
+            Three simple steps
           </h2>
-          <p className="mt-4 text-[16px] leading-relaxed text-text-secondary">
-            A transparent, automated pipeline designed for accounting accuracy.
+          <p className="mt-3 text-[15px] leading-[1.65] text-text-muted">
+            Designed for speed on mobile, clarity for finance, and exports your accountant can trust.
           </p>
         </div>
 
-        <div className="mx-auto grid max-w-[900px] grid-cols-1 overflow-hidden rounded-2xl border border-border-subtle bg-white shadow-sm md:grid-cols-3">
+        <div className="mx-auto grid max-w-[700px] grid-cols-1 overflow-hidden rounded-[12px] border border-border-default md:grid-cols-3">
           {steps.map((step, index) => (
             <article
               key={step.title}
-              className="border-b border-border-subtle px-8 py-10 text-center last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0"
+              className="border-b border-border-subtle bg-bg-surface px-7 py-8 text-center last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0"
             >
-              <div className="mx-auto mb-6 flex size-14 items-center justify-center rounded-xl bg-bg-page border border-border-subtle text-text-primary">
-                <step.icon className="size-6" strokeWidth={1.5} />
+              <p className="mb-3 text-[11px] font-medium text-text-ghost">
+                {String(index + 1).padStart(2, "0")}
+              </p>
+              <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full border border-border-default bg-bg-page text-text-secondary">
+                <step.icon className="size-5" strokeWidth={1.5} />
               </div>
-              <h3 className="text-[16px] font-semibold tracking-tight text-text-primary">{step.title}</h3>
-              <p className="mt-3 text-[14px] leading-relaxed text-text-secondary">{step.description}</p>
+              <h3 className="font-sans text-[14px] font-medium text-text-primary">{step.title}</h3>
+              <p className="mt-2 text-[13px] leading-[1.55] text-text-muted">{step.description}</p>
             </article>
           ))}
         </div>

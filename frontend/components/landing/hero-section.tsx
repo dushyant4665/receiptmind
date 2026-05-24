@@ -5,21 +5,23 @@ import { Button } from "@/components/ui/button";
 const navLinks = [
   { href: "#features", label: "Features" },
   { href: "#workflow", label: "Workflow" },
+  { href: "#pricing", label: "Pricing" },
+  { href: "#testimonials", label: "Customers" },
 ];
 
 function Logo({ invert = false }: { invert?: boolean }) {
   return (
-    <Link href="/" className="flex items-center gap-2.5" aria-label="ReceiptMind home">
+    <Link href="/" className="flex items-center gap-2" aria-label="ReceiptMind home">
       <span
-        className={`flex size-8 items-center justify-center rounded-lg text-[12px] font-bold tracking-wider ${
-          invert ? "bg-white text-ink" : "bg-ink text-white"
+        className={`flex size-7 items-center justify-center rounded-[6px] text-[11px] font-medium tracking-[1px] ${
+          invert ? "bg-text-invert text-bg-invert" : "bg-text-primary text-white"
         }`}
       >
         RM
       </span>
       <span
-        className={`text-[16px] font-bold tracking-tight ${
-          invert ? "text-white" : "text-ink"
+        className={`text-[15px] font-medium tracking-[-0.3px] ${
+          invert ? "text-text-invert" : "text-text-primary"
         }`}
       >
         ReceiptMind
@@ -31,65 +33,67 @@ function Logo({ invert = false }: { invert?: boolean }) {
 export function HeroSection() {
   return (
     <>
-      <nav className="sticky top-0 z-50 h-16 border-b border-border-subtle bg-white/80 backdrop-blur-md px-6 md:px-10">
-        <div className="mx-auto flex h-full max-w-7xl items-center justify-between">
+      <nav className="sticky top-0 z-50 h-14 border-b border-border-default bg-bg-surface px-4 md:px-8">
+        <div className="mx-auto flex h-full max-w-6xl items-center justify-between">
           <Logo />
 
-          <div className="hidden items-center gap-6 md:flex">
+          <div className="hidden items-center gap-1 md:flex">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="text-[13px] font-medium text-text-secondary transition-colors hover:text-text-primary"
+                className="rounded-[8px] px-3 py-1.5 text-[13px] text-text-secondary transition-[background-color,color] hover:bg-bg-subtle hover:text-text-primary"
               >
                 {link.label}
               </Link>
             ))}
           </div>
 
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" asChild className="hidden md:inline-flex text-[13px] font-medium">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" asChild className="hidden md:inline-flex">
               <Link href="/login">Sign in</Link>
             </Button>
-            <Button size="sm" asChild className="text-[13px] font-medium">
-              <Link href="/signup">Get started</Link>
+            <Button asChild>
+              <Link href="/signup">Try free</Link>
             </Button>
             <Button variant="outline" size="icon" className="md:hidden" aria-label="Open navigation">
-              <Menu className="size-4" />
+              <Menu />
             </Button>
           </div>
         </div>
       </nav>
 
-      <section className="bg-bg-page px-6 py-24 text-center md:px-10 md:pb-28 md:pt-32 border-b border-border-subtle">
-        <div className="mx-auto max-w-[800px]">
-          <div className="inline-flex items-center rounded-full border border-border-default bg-white px-3 py-1 shadow-sm mb-8">
-            <div className="flex size-2 items-center justify-center mr-2">
-              <span className="absolute inline-flex h-2 w-2 animate-ping rounded-full bg-emerald opacity-75"></span>
-              <span className="relative inline-flex size-1.5 rounded-full bg-emerald"></span>
-            </div>
-            <span className="text-[12px] font-medium text-text-primary">Gemini AI Engine Live</span>
-          </div>
-
-          <h1 className="mx-auto max-w-[700px] text-5xl font-semibold tracking-tight text-text-primary md:text-7xl md:leading-[1.1]">
-            Enterprise receipt processing. <span className="text-text-muted">Automated.</span>
-          </h1>
-
-          <p className="mx-auto mt-6 max-w-[500px] text-[16px] leading-relaxed text-text-secondary md:text-[18px]">
-            Stop typing manual expenses. Upload receipts and let our AI extract vendor, amount, date, and category in seconds. Backed by a robust asynchronous queue.
+      <section className="bg-bg-page px-4 py-20 text-center md:px-8 md:pb-20 md:pt-24">
+        <div className="mx-auto max-w-[680px]">
+          <p className="fade-up inline-flex items-center rounded-[16px] border border-border-default px-3.5 py-1 text-[11px] font-medium uppercase tracking-[0.08em] text-text-muted">
+            Enterprise receipt intelligence
           </p>
 
-          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Button size="lg" asChild className="h-12 px-8 text-[14px] shadow-md w-full sm:w-auto">
-              <Link href="/signup">Start uploading now</Link>
+          <h1 className="fade-up delay-80 mx-auto mt-6 max-w-[580px] font-heading text-[40px] leading-[1.08] tracking-[-0.5px] text-text-primary md:text-[52px] md:tracking-[-1px]">
+            Stop <em className="italic text-amber">typing</em>.
+            <br />
+            Start uploading.
+          </h1>
+
+          <p className="fade-up delay-160 mx-auto mt-4 max-w-[440px] text-[16px] leading-[1.65] text-text-muted">
+            Upload receipts, invoices, or PDFs. ReceiptMind extracts vendor, amount, date, category, and tax-ready data before your coffee cools.
+          </p>
+
+          <div className="fade-up delay-240 mt-8 flex flex-col items-center justify-center gap-2.5 sm:flex-row">
+            <Button variant="amber" asChild>
+              <Link href="/signup">Try free - no card needed</Link>
             </Button>
-            <Button variant="outline" size="lg" asChild className="h-12 px-8 text-[14px] bg-white w-full sm:w-auto">
-              <Link href="#features" className="inline-flex items-center gap-2">
-                See features
-                <ArrowRight className="size-4" />
+            <Button variant="ghost" asChild>
+              <Link href="#demo" className="inline-flex items-center gap-2">
+                See a demo
+                <ArrowRight />
               </Link>
             </Button>
           </div>
+
+          <p className="fade-up delay-320 mt-4 text-[12px] text-text-ghost">
+            10 receipts free. No credit card. Cancel anytime.
+          </p>
         </div>
       </section>
     </>
