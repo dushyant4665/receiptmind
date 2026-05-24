@@ -1,10 +1,9 @@
 const crypto = require('crypto');
 const path = require('path');
 const db = require('../config/db');
-const { client: redis } = require('../config/redis');
 const storageService = require('../services/storageService');
-const queueService = require('../services/queueService');
 const ruleService = require('../services/ruleService');
+const receiptProcessingService = require('../services/receiptProcessingService');
 const { successResponse, errorResponse } = require('../utils/response');
 
 const upload = async (req, res) => {
@@ -63,16 +62,16 @@ const upload = async (req, res) => {
       [crypto.randomUUID(), organizationId, receiptId, filePath, fileHash, file.size, file.mimetype]
     );
 
-    await queueService.enqueueReceipt(receiptId, filePath, organizationId, 'high');
-
     await db.query(
       `INSERT INTO receipt_processing_jobs (id, receipt_id, organization_id, processing_state)
        VALUES ($1, $2, $3, 'queued')`,
       [crypto.randomUUID(), receiptId, organizationId]
     );
 
-    // Invalidate cache
-    await invalidateCache(organizationId);
+    // Process receipt immediately in background
+    receiptProcessingService.processReceipt(receiptId, filePath, organizationId).catch(err => {
+      console.error('Background processing error:', err);
+    });
 
     res.status(201).json(successResponse({
       id: receiptId,
@@ -136,16 +135,6 @@ const listReceipts = async (req, res) => {
   offset = parseInt(offset);
 
   try {
-    const cacheKey = `receipts:${organizationId}:${limit}:${offset}:${search}:${status}:${start_date}:${end_date}:${min_amount}:${max_amount}`;
-    
-    if (redis) {
-      const cached = await redis.get(cacheKey);
-      if (cached) {
-        res.setHeader('X-Cache', 'HIT');
-        return res.json(JSON.parse(cached));
-      }
-    }
-
     let query = `SELECT r.id, r.organization_id, r.user_id, r.file_path, r.file_url, r.status,
                         r.raw_vendor_name, r.raw_amount, r.raw_date, r.raw_category, r.raw_confidence,
                         r.vendor_name, r.amount, r.receipt_date, r.category, r.confidence, r.created_at,
@@ -234,11 +223,6 @@ const listReceipts = async (req, res) => {
       offset,
     };
 
-    if (redis) {
-      await redis.setEx(cacheKey, 10, JSON.stringify(successResponse(data)));
-    }
-
-    res.setHeader('X-Cache', redis ? 'MISS' : 'DISABLED');
     res.json(successResponse(data));
   } catch (error) {
     console.error('List receipts error:', error);
@@ -299,8 +283,6 @@ const editReceipt = async (req, res) => {
 
     await db.query(query, params);
 
-    await invalidateCache(organizationId);
-
     res.json(successResponse({ id, updated: true }));
   } catch (error) {
     console.error('Edit receipt error:', error);
@@ -327,8 +309,6 @@ const deleteReceipt = async (req, res) => {
 
     await db.query('UPDATE storage_objects SET deleted_at = NOW() WHERE organization_id = $1 AND path = $2', [organizationId, filePath]);
     await db.query('DELETE FROM receipts WHERE id = $1 AND organization_id = $2', [id, organizationId]);
-
-    await invalidateCache(organizationId);
 
     res.json(successResponse({ id, deleted: true }));
   } catch (error) {
@@ -365,8 +345,6 @@ const bulkDeleteReceipts = async (req, res) => {
       'DELETE FROM receipts WHERE id = ANY($1) AND organization_id = $2',
       [receipt_ids, organizationId]
     );
-
-    await invalidateCache(organizationId);
 
     res.json(successResponse({ count: receipt_ids.length, deleted: true }));
   } catch (error) {
@@ -461,17 +439,6 @@ const listExpenses = async (req, res) => {
   } catch (error) {
     console.error('List expenses error:', error);
     res.status(500).json(errorResponse('Internal server error'));
-  }
-};
-
-const invalidateCache = async (organizationId) => {
-  if (!redis) {
-    return;
-  }
-  await redis.del(`dashboard:${organizationId}`);
-  const keys = await redis.keys(`receipts:${organizationId}:*`);
-  if (keys.length > 0) {
-    await redis.del(keys);
   }
 };
 

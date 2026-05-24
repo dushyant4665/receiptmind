@@ -1,7 +1,5 @@
 const app = require('./app');
-const { connectRedis, isRedisAvailable } = require('./config/redis');
 const runMigrations = require('./db/migrations');
-const startWorker = require('./workers/receiptWorker');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 3001;
@@ -11,18 +9,6 @@ const start = async () => {
     // Run Database Migrations
     await runMigrations();
     console.log('Database migrations completed');
-
-    // Connect to Redis if available
-    if (isRedisAvailable()) {
-      await connectRedis();
-      console.log('Connected to Redis');
-
-      // Start Worker
-      startWorker();
-      console.log('Receipt processing worker started');
-    } else {
-      console.log('Redis not configured - queue processing will be disabled');
-    }
 
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);

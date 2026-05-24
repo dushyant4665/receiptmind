@@ -1,19 +1,10 @@
 const db = require('../config/db');
-const { client: redis } = require('../config/redis');
 const { successResponse, errorResponse } = require('../utils/response');
 
 const getStats = async (req, res) => {
   const { organizationId } = req.user;
-  const cacheKey = `dashboard:${organizationId}`;
 
   try {
-    if (redis) {
-      const cached = await redis.get(cacheKey);
-      if (cached) {
-        return res.json(successResponse(JSON.parse(cached)));
-      }
-    }
-
     const { rows: totalRows } = await db.query(
       'SELECT COUNT(*) FROM receipts WHERE organization_id = $1',
       [organizationId]
@@ -60,10 +51,6 @@ const getStats = async (req, res) => {
       time_saved_minutes: timeSavedMinutes,
       automation_rate: automationRate,
     };
-
-    if (redis) {
-      await redis.setEx(cacheKey, 30, JSON.stringify(stats));
-    }
 
     res.json(successResponse(stats));
   } catch (error) {
