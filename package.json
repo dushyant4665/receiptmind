@@ -1,0 +1,10 @@
+{
+  "name": "receiptmind-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "postinstall": "cd backend && npm install",
+    "build": "echo 'No root build required'",
+    "start": "npm start --prefix backend"
+  }
+}
