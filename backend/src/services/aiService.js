@@ -150,7 +150,7 @@ const extractWithGemini = async (apiKey, modelName, base64Image, mimeType, ocrTe
     ? [{ text: buildPrompt(ocrText) + '\n\nNote: This is a PDF receipt. Use the OCR text above for extraction.' }]
     : [
         { text: buildPrompt(ocrText) },
-        { inline_data: { mime_type: mimeType, data: base64Image } },
+        { inlineData: { mimeType: mimeType, data: base64Image } },
       ];
 
   const response = await fetch(url, {

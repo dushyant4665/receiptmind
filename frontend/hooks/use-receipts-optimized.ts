@@ -7,7 +7,7 @@ import { getApiUrl } from "@/lib/env";
 import { toast } from "sonner";
 import type { Receipt, ReceiptListResponse, ReceiptUploadResponse, Exception } from "@/types";
 
-export type ReceiptStatus = "pending" | "processing" | "processed" | "failed";
+export type ReceiptStatus = "pending" | "processing" | "processed" | "failed" | "needs_review";
 
 // Backend receipt shape from Go API
 type BackendReceipt = {
@@ -27,6 +27,7 @@ type BackendReceipt = {
   category?: string | null;
   confidence?: number | null;
   created_at: string;
+  error_message?: string | null;
   exceptions?: BackendException[];
 };
 
@@ -54,20 +55,21 @@ function mapReceipt(r: BackendReceipt): Receipt {
     organizationId: r.organization_id,
     userId: r.user_id,
     filePath: r.file_path,
-    status: r.status,
+    status: r.status as ReceiptStatus,
     rawVendorName: r.raw_vendor_name,
     rawAmount: r.raw_amount == null ? null : Number(r.raw_amount),
     rawDate: r.raw_date,
     rawCategory: r.raw_category,
     rawConfidence: r.raw_confidence,
-    vendorName: r.vendor_name,
-    amount: r.amount == null ? null : Number(r.amount),
+    vendorName: r.vendor_name ?? (r.status === 'processing' ? 'Processing...' : 'Unknown Vendor'),
+    amount: r.amount == null ? 0 : Number(r.amount),
     receiptDate: r.receipt_date,
-    category: r.category,
-    confidence: r.confidence ?? null,
+    category: r.category ?? 'Other',
+    confidence: r.confidence,
     createdAt: r.created_at,
     fileUrl: r.file_path,
-    exceptions: r.exceptions?.map(mapException),
+    exceptions: null,
+    errorMessage: r.error_message,
   };
 }
 

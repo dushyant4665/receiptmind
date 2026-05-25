@@ -6,6 +6,7 @@ const PORT = process.env.PORT || 3001;
 
 const start = async () => {
   try {
+    console.log(`[BOOT DEBUG] pid=${process.pid} port=${PORT}`);
     // Run Database Migrations
     await runMigrations();
     console.log('Database migrations completed');

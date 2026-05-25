@@ -79,13 +79,22 @@ export default function ReceiptsPage() {
 
     for (const receipt of receipts) {
       const previous = previousStatusesRef.current[receipt.id];
-      const finished = receipt.status === "processed" || receipt.status === "needs_review" || receipt.status === "failed";
+      const finished = receipt.status === "processed";
+      const failed = receipt.status === "failed" || receipt.status === "error";
+
       if ((previous === "processing" || previous === "pending") && finished) {
-        if (receipt.status === "processed") toast.success(`${receipt.vendorName || "Receipt"} processed`);
-        if (receipt.status === "needs_review") toast.warning(`${receipt.vendorName || "Receipt"} needs review`);
-        if (receipt.status === "failed") {
-          toast.error(`Receipt processing failed${receipt.errorMessage ? `: ${receipt.errorMessage}` : ''}`);
-        }
+        toast.success(`${receipt.vendorName || "Receipt"} processed`, {
+          description: `Extracted amount: $${receipt.amount?.toFixed(2) || '0.00'}`,
+        });
+      } else if ((previous === "processing" || previous === "pending") && failed) {
+        toast.error(`Processing failed`, {
+          description: receipt.errorMessage || "Unknown error occurred during extraction",
+          duration: 6000,
+        });
+      } else if ((previous === "processing" || previous === "pending") && receipt.status === "needs_review") {
+        toast.warning(`${receipt.vendorName || "Receipt"} needs review`, {
+          description: "Confidence is low or some fields are missing.",
+        });
       }
     }
 

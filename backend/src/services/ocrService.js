@@ -2,33 +2,51 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { promisify } = require('util');
+const Tesseract = require('tesseract.js');
 const execPromise = promisify(exec);
 const writeFilePromise = promisify(fs.writeFile);
 const unlinkPromise = promisify(fs.unlink);
 const os = require('os');
 
-const extractText = async (imageBuffer) => {
-  const tmpPath = path.join(os.tmpdir(), `receiptmind-ocr-${Date.now()}.png`);
+const MIME_EXTENSION_MAP = {
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/heic': '.heic',
+  'image/heif': '.heif',
+  'application/pdf': '.pdf',
+};
+
+const extractText = async (fileBuffer, mimeType = 'image/png') => {
+  const extension = MIME_EXTENSION_MAP[mimeType] || '.bin';
+  const tmpPath = path.join(os.tmpdir(), `receiptmind-ocr-${Date.now()}${extension}`);
   
   try {
-    await writeFilePromise(tmpPath, imageBuffer);
+    await writeFilePromise(tmpPath, fileBuffer);
     
-    // Check if tesseract is installed
-    try {
-      await execPromise('tesseract --version');
-    } catch (error) {
-      console.warn('Tesseract not found, skipping OCR');
+    if (mimeType === 'application/pdf') {
       return '';
     }
 
-    const { stdout, stderr } = await execPromise(`tesseract "${tmpPath}" stdout -l eng --psm 6`);
-    
-    if (stderr && !stdout) {
-      console.error('Tesseract stderr:', stderr);
+    try {
+      await execPromise('tesseract --version');
+      const { stdout, stderr } = await execPromise(`tesseract "${tmpPath}" stdout -l eng --psm 6`);
+      
+      if (stderr && !stdout) {
+        console.error('Tesseract stderr:', stderr);
+      }
+
+      return cleanOCRText(stdout);
+    } catch (error) {
+      console.warn('Tesseract binary not found, falling back to tesseract.js OCR');
     }
 
-    const text = cleanOCRText(stdout);
-    return text;
+    const result = await Tesseract.recognize(tmpPath, 'eng', {
+      logger: () => {},
+    });
+
+    return cleanOCRText(result?.data?.text || '');
   } catch (error) {
     console.error('OCR Extraction failed:', error);
     return '';
