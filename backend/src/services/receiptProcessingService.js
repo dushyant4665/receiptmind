@@ -60,11 +60,20 @@ const executeProcessing = async (receiptId, filePath, orgId) => {
     else if (ext.endsWith('.heic') || ext.endsWith('.heif')) mimeType = 'image/heic';
     else if (ext.endsWith('.gif')) mimeType = 'image/gif';
 
-    console.log(`Starting OCR for receipt ${receiptId}`);
-    const ocrText = await ocrService.extractText(fileBuffer, mimeType);
-    console.log(`OCR completed for receipt ${receiptId}, chars: ${ocrText?.length || 0}`);
+    let ocrText = '';
+    let extraction;
 
-    let extraction = await aiService.extractWithContext(fileBuffer, ocrText, mimeType);
+    try {
+      console.log(`Starting fast AI extraction (direct image) for receipt ${receiptId}`);
+      extraction = await aiService.extractWithContext(fileBuffer, '', mimeType);
+    } catch (error) {
+      console.warn(`Direct AI extraction failed, falling back to OCR + Heuristic:`, error.message);
+      console.log(`Starting OCR fallback for receipt ${receiptId}`);
+      ocrText = await ocrService.extractText(fileBuffer, mimeType);
+      console.log(`OCR completed for receipt ${receiptId}, chars: ${ocrText?.length || 0}`);
+      extraction = await aiService.extractWithContext(fileBuffer, ocrText, mimeType);
+    }
+
     extraction = await ruleService.applyRules(orgId, extraction);
 
     // Ensure amount is numeric and date is valid
