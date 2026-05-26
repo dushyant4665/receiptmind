@@ -1,89 +1,32 @@
-# ReceiptMind Technical Deep-Dive (Confidential)
+# Technical Deep Dive
 
-## 1. System Architecture Overview
-The ReceiptMind Enterprise platform is a high-performance document processing pipeline built using a decoupled architecture.
+This page is for people who want to know the deep secrets of how ReceiptMind works.
 
-- **Frontend:** Next.js 16 (App Router), TypeScript, TailwindCSS, TanStack Query (v5), NextAuth.js.
-- **Backend:** Node.js with Express, PostgreSQL.
-- **AI/ML:** Gemini 1.5 Flash (Primary) & OpenAI GPT-4o (Fallback) for document extraction.
-- **Database:** PostgreSQL via pg for relational data.
+## 1. Authentication (Logging In)
 
----
+We use a special system for signing up. Instead of creating a user account immediately, we save the information in a temporary table called `pending_registrations`. 
 
-## 2. Backend Deep-Dive (Node.js & Express)
+The user then gets an email with a link. When they click it, the system moves their information into the main `users` table and creates their `organization`. This ensures that every user in our system has a real, working email address.
 
-### Core Components:
-- **Server Setup (`src/app.js`):** Uses Express with middleware including Security Headers, CORS, Rate Limiting, and Request Logging.
-- **Database Layer (`src/config/db.js`):** Uses `pg` for efficient connection management. Schema-first design with complex indexes for receipt searching.
-- **Auth Flow (Refactored):**
-    - **Verify-then-Save:** Prevents DB pollution. Data is stored in `pending_registrations` until email verification.
-    - **JWT Service:** Generates Access Tokens and Refresh Tokens (7-day expiry).
-    - **Security:** bcryptjs for password hashing.
+## 2. Background Processing
 
-### Document Processing Pipeline (`src/services`):
-1. **Upload:** Files are stored in Local Storage or S3.
-2. **Immediate Processing:** No queue required - processing starts in background immediately.
-3. **Pipeline Steps:**
-    - **OCR:** Extracts raw text.
-    - **AI Extraction:** `aiService.js` sends the image + OCR context to Gemini 1.5 Flash using high-density JSON prompts.
-    - **Retry Logic:** If Gemini fails, it automatically falls back to OpenAI GPT-4o.
-4. **Data Normalization:** Raw AI output is parsed into structured fields (Vendor, Amount, Date, Category) with confidence scores.
+When you upload a receipt, the server doesn't wait for the AI to finish reading it. This is important because the AI can sometimes be slow. 
 
----
+Instead, the server saves the file and immediately says "Done!" to the website. Then, it starts a background task. This task sends the file to the AI, waits for the answer, and then updates the database. Because it happens in the background, you can keep using the website without any lag.
 
-## 3. Frontend Deep-Dive (Next.js & TypeScript)
+## 3. Data Integrity (ACID)
 
-### State Management & Data Fetching:
-- **TanStack Query:** Handles all server state. Implements polling (3s) for pending receipts to provide a "live" processing feel.
-- **Axios Client:** Centrally managed in `lib/api-client.ts` with interceptors for JWT injection and 401 (Auto-Logout) handling.
+We use database "Transactions" for important tasks like verifying an email or deleting a user. A transaction is like a promise: either everything in the task succeeds, or none of it happens. This prevents the database from getting half-finished or broken data.
 
-### UI/UX Design System:
-- **Styling:** Tailwind CSS. Uses a high-contrast monochromatic theme with "Amber" accents.
-- **Components:** Modular React components (Shadcn/UI base) for Receipts Table, Dashboard Charts, and Exception Modals.
-- **Responsive:** Fluid layout using CSS Variables for consistent spacing and typography.
+## 4. Frontend State Management
 
----
+We use a tool called "React Query" (or TanStack Query) to manage the data on the website. 
 
-## 4. Key Logic & Coding Concepts
+- **Automatic Syncing:** It automatically refreshes the data when you switch tabs or come back to the site.
+- **Cache:** It saves a copy of the data so the website feels faster.
+- **Polling:** For receipts that are still being processed, the website "polls" (asks repeatedly) the server every 3 seconds until the work is finished.
 
-### Verify-then-Save Signup Logic
-Instead of creating a 'pending' user, we store data in `pending_registrations`.
-This ensures the `users` table only contains verified identities.
+## 5. Security Details
 
-### AI Prompt Engineering
-The system uses a rigid JSON-mode prompt to ensure AI returns strictly parsable data.
-```text
-Return ONLY one JSON object:
-{
-  "vendor_name": "...",
-  "amount": 0.00,
-  "category": "Food|Travel|..."
-}
-```
-
----
-
-## 5. Tools & Libraries Summary
-
-| Tool | Usage | Why? |
-| :--- | :--- | :--- |
-| **Express (Node.js)** | Backend Framework | Minimal and flexible, large ecosystem. |
-| **pg (Node.js)** | DB Driver | Direct PostgreSQL protocol support, high performance. |
-| **TanStack Query** | Frontend State | Robust caching, refetching, and pagination. |
-| **Zod** | Validation | Type-safety for incoming request bodies. |
-| **NextAuth.js** | Auth Orchestration | Industry standard for Next.js auth flows. |
-| **Nodemailer** | Email | Email sending with SMTP. |
-
----
-
-## 6. End-to-End Flow: Receipt Processing
-1. User uploads `receipt.pdf` from the Dashboard.
-2. `useUploadReceipt` hook sends a `multipart/form-data` request to `/receipts/upload`.
-3. Backend saves the file and starts background processing.
-4. `receiptProcessingService.processReceipt` runs the extraction.
-5. Gemini/OpenAI extracts data. Results saved to `receipts` table.
-6. Frontend (polling via TanStack Query) detects `status="processed"` and updates the UI instantly.
-
----
-
-**Personal Note:** This architecture is designed for ease of deployment and maintenance—no external dependencies like Redis required, just PostgreSQL.
+- **JWT Tokens:** We use two tokens. An "Access Token" for everyday tasks (it lasts 15 minutes) and a "Refresh Token" to get a new access token (it lasts 7 days).
+- **Environment Variables:** All secret information, like API keys and database passwords, is kept in a `.env` file and is never shared in the code itself.

@@ -58,10 +58,6 @@ app.get('/health', (req, res) => {
   res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.get('/ready', (req, res) => {
-  res.json({ success: true, status: 'ready', timestamp: new Date().toISOString() });
-});
-
 // Error handling
 app.use((err, req, res, next) => {
   console.error(err.stack);

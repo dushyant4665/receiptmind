@@ -1,61 +1,43 @@
-# Technical Requirements Specification (TRS) - ReceiptMind
+# Technical Requirements Specification (TRS)
 
-## 1. System Architecture
+This document explains the technical parts of ReceiptMind. It describes the tools we used and how the system is put together.
 
-ReceiptMind follows a decoupled architecture with a clear separation between the UI and the Backend.
+## 1. The Technology Stack
 
-### 1.1 Technology Stack
-- **Frontend:** Next.js 16+ (App Router), TypeScript, React 19.
-- **Backend:** Node.js 18+, Express.js.
-- **Database:** PostgreSQL (Primary).
-- **Storage:** Local or S3-compatible storage.
-- **AI:** Google Gemini 1.5 Flash (Primary), OpenAI GPT-4o (Fallback).
-- **Auth:** NextAuth.js (Frontend), JWT (Backend).
+### Frontend (The Website)
+- Next.js 16: This is the main framework for building the website.
+- React: Used for building the interactive parts of the UI.
+- Tailwind CSS: Used for styling the website to make it look nice.
+- Lucide React: Used for the icons.
 
-## 2. Backend Specifications
+### Backend (The Server)
+- Node.js: The environment that runs our server code.
+- Express: The framework that handles web requests and routes.
+- Multer: A tool that helps us handle file uploads.
+- Sharp: A tool used to process and resize images.
 
-### 2.1 API Design
-- **RESTful API:** JSON-based communication.
-- **Routing:** Express router-based routing.
-- **Middleware:** 
-  - `auth.js`: JWT verification and user context injection.
-  - `morgan`: HTTP request logging.
-  - `helmet`: Security headers.
-  - `cors`: Cross-origin resource sharing.
+### Database (The Memory)
+- PostgreSQL: This is where we save all the information about users, organizations, and receipts.
+- PG (node-postgres): The tool the server uses to talk to the database.
 
-### 2.2 Background Processing
-- **Immediate Processing:** No queue required - processing starts in background immediately using Node.js async capabilities.
-- **Idempotency:** File hashing prevents duplicate processing of the same document.
+### AI (The Brain)
+- Google Gemini 1.5 Flash: The primary AI that reads the receipts.
+- OpenRouter: A backup system that lets us use other AI models if Gemini is busy.
 
-### 2.3 Database Schema (Canonical Model)
-- **Organizations:** Multi-tenant root entity.
-- **Users:** Belong to organizations.
-- **Receipts:** Core entity linked to organizations and users.
-- **Rules:** Conditional logic for auto-categorization.
-- **Exceptions:** Records requiring manual intervention.
+## 2. How the System is Organized
 
-## 3. Frontend Specifications
+### The Database
+- Organizations: Every user belongs to an organization. This keeps data separate.
+- Users: People who sign up to use the app.
+- Receipts: The core data, including file paths and the information found by AI.
+- Rules: Custom settings created by users to help categorize receipts.
 
-### 3.1 State Management
-- **Server State:** TanStack React Query for caching, optimistic updates, and background revalidation.
-- **Client State:** React `useState` and `useContext` for UI-only state (modals, filters).
+### Security
+- Passwords: We never save plain passwords. We use "bcrypt" to turn them into a secret code.
+- JWT: We use JSON Web Tokens to keep users logged in safely.
+- Data Separation: The server always checks that a user only sees receipts belonging to their own organization.
 
-### 3.2 UI Components
-- **Framework:** Tailwind CSS for utility-first styling.
-- **Components:** Radix UI primitives for accessible UI (Dialogs, Dropdowns, Tabs).
-- **Icons:** Lucide-React.
-
-### 3.3 API Integration
-- **Client:** Axios instance with global interceptors.
-- **Auth Injection:** Automatically attaches JWT tokens from the NextAuth session.
-
-## 4. Security & Compliance
-- **Data Isolation:** Every database query is scoped by `organization_id`.
-- **JWT Security:** HS256 signed tokens with short expiration.
-- **Input Validation:** Strict type checking in TypeScript.
-- **Storage Security:** Private buckets with Signed URLs for document access.
-
-## 5. Deployment & DevOps
-- **Backend:** Render Web Service (Node.js).
-- **Frontend:** Vercel or similar Edge-ready platform.
-- **Monitoring:** Sentry for error tracking.
+## 3. How We Process Files
+- Files are saved on the server's hard drive in an "uploads" folder.
+- When a file is uploaded, the server gives it a unique name so files don't get mixed up.
+- The AI runs in the background. This means the user doesn't have to wait for the AI to finish before they can do other things on the website.

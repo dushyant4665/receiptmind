@@ -4,7 +4,6 @@ const aiService = require('./aiService');
 const ruleService = require('./ruleService');
 const exceptionService = require('./exceptionService');
 const validationService = require('./validationService');
-const csvExportService = require('./csvExportService');
 
 const processingQueue = [];
 let isProcessing = false;
@@ -122,23 +121,6 @@ const executeProcessing = async (receiptId, filePath, orgId) => {
        WHERE receipt_id = $2 AND processing_state = 'processing'`,
       [newStatus, receiptId]
     );
-
-    // Append to CSV log for Peak Booking System
-    try {
-      await csvExportService.appendReceipt({
-        id: receiptId,
-        vendor_name: vendor,
-        amount,
-        currency: finalizedExtraction.currency || 'USD',
-        category: finalizedExtraction.category,
-        receipt_date: date,
-        confidence,
-        status: newStatus,
-      });
-      console.log(`Receipt ${receiptId} exported to CSV log.`);
-    } catch (csvError) {
-      console.error(`Failed to append receipt ${receiptId} to CSV:`, csvError);
-    }
 
     console.log(`Receipt ${receiptId} processed successfully with status ${newStatus}`);
     return { success: true, status: newStatus };

@@ -278,32 +278,6 @@ describe('Comprehensive API Tests', () => {
     });
   });
 
-  describe('CSV Export Service', () => {
-    it('should correctly format and append receipt data to receipts_peak.csv', async () => {
-      const csvExportService = require('../src/services/csvExportService');
-      const fs = require('fs').promises;
-      
-      const record = {
-        id: 'test-uuid-1234',
-        vendor_name: 'Supermarket, Inc.',
-        amount: 84.50,
-        currency: 'USD',
-        category: 'Meals & Entertainment',
-        receipt_date: '2026-05-25',
-        confidence: 0.95,
-        status: 'processed'
-      };
-
-      await csvExportService.appendReceipt(record);
-      
-      const content = await fs.readFile(csvExportService.csvPath, 'utf8');
-      expect(content).toContain('Receipt ID');
-      expect(content).toContain('Supermarket, Inc.');
-      expect(content).toContain('84.5');
-      expect(content).toContain('95%');
-    });
-  });
-
   describe('Health Check', () => {
     it('GET /health should return 200', async () => {
       const res = await request(app).get('/health');

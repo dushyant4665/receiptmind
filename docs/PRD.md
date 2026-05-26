@@ -1,39 +1,38 @@
-# Product Requirements Document (PRD) - ReceiptMind
+# Product Requirements Document (PRD)
 
-## 1. Executive Summary
-ReceiptMind is an enterprise-grade, AI-powered receipt and expense management platform. It automates the tedious process of manual data entry for financial documents, providing businesses with a streamlined workflow from upload to accounting.
+## What is ReceiptMind?
+ReceiptMind is a website that helps people keep track of their spending. It is built for anyone who has a lot of receipts and doesn't want to type them all into a spreadsheet by hand.
 
-## 2. Target Audience
-- **Small to Medium Businesses (SMBs):** Looking to automate expense tracking.
-- **Freelancers/Contractors:** Needing to organize receipts for tax purposes.
+## Who is it for?
+- Small business owners who need to track their expenses.
+- People who want to organize their bills for taxes.
+- Anyone who wants to see where their money is going.
 
-## 3. Core Features
+## Main Features
 
-### 3.1 AI-Powered Data Extraction
-- **Upload:** Support for PDF, JPG, JPEG, and PNG.
-- **OCR & Extraction:** High-accuracy extraction of Vendor Name, Date, Currency, Total Amount, Tax, and Category.
-- **Confidence Scoring:** Every extraction includes a confidence score to trigger manual reviews when uncertain.
+### 1. Uploading Receipts
+- You can upload pictures (JPG, PNG) or PDF files.
+- You can upload many files at the same time.
 
-### 3.2 Receipt Management
-- **Search & Filter:** Powerful search by vendor, amount, date range, and status.
-- **Bulk Actions:** Delete or export multiple receipts at once.
-- **Export:** Export data to CSV for compatibility with accounting software.
+### 2. Smart AI Reading
+- The computer uses AI to look at the receipt.
+- It finds the Vendor (who you paid), the Date (when you paid), and the Amount (how much you paid).
+- It also tries to guess the Category (like "Food" or "Travel").
 
-### 3.3 Expense Workflow
-- **Categorization:** Automatic categorization based on AI and custom user rules.
-- **Manual Overrides:** Users can edit any extracted field to ensure 100% accuracy.
-- **Duplicate Detection:** Prevents double-counting by hashing file contents.
+### 3. Reviewing & Fixing
+- If the AI is not 100% sure, it will show a warning.
+- You can open any receipt and fix the information if the AI made a mistake.
+- You can delete receipts you don't need anymore.
 
-### 3.4 Governance
-- **Exception Management:** Dedicated workflow for receipts with low confidence or missing data.
-- **Organization Isolation:** Every user belongs to an organization, ensuring data privacy.
+### 4. Organization
+- Rules: You can create rules to automatically categorize receipts.
+- Exceptions: There is a special page for receipts that the AI had trouble reading.
+- Dashboard: A main page that shows you how many receipts you have and how much you've spent.
 
-## 4. User Experience (UX) Goals
-- **Responsiveness:** Immediate feedback on upload; no waiting for synchronous AI processing.
-- **Modern UI:** Clean, bento-grid inspired dashboard with clear calls to action.
-- **Accessibility:** Keyboard navigable and high-contrast UI elements.
+### 5. Exporting
+- You can download all your data as a CSV file. This file can be opened in Excel or Google Sheets.
 
-## 5. Future Roadmap
-- **Advanced Reporting:** Custom graphs and spend analytics.
-- **Multi-Currency Support:** Automatic currency conversion based on receipt date.
-
+## Design Goals
+- The website should be easy to use.
+- It should look clean and professional.
+- It should be fast, so users don't have to wait a long time.

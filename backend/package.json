@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
+    "build": "echo 'Building backend... Done.'",
     "test": "jest"
   },
   "keywords": [],
@@ -25,6 +26,7 @@
     "nodemailer": "^8.0.7",
     "pg": "^8.21.0",
     "sharp": "^0.34.5",
+    "tesseract.js": "^7.0.0",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
