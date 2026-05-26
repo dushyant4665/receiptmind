@@ -1,29 +1,73 @@
-# How ReceiptMind Works
+# Receipt Processing Flow
 
-This page explains what happens from the moment you upload a receipt until it is saved in the system.
+This document explains the high-level flow of the live system from upload to final review state.
 
-## 1. Uploading a Receipt
+## End-to-End Flow
 
-1. **You Pick a File:** You click "Upload" and choose a picture or PDF.
-2. **Sent to Server:** The website sends the file to the server.
-3. **Saving the File:** The server saves the file and creates a new entry in the database. It marks the status as "Processing".
-4. **Quick Response:** The server tells the website "I got it!", and the website shows a message saying the receipt is being processed.
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Backend
+    participant Storage
+    participant AI
+    participant DB
 
-## 2. Reading the Receipt (In the Background)
+    User->>Frontend: Choose file and submit upload
+    Frontend->>Backend: POST /api/receipts/upload
+    Backend->>Storage: Save file
+    Backend->>DB: Create receipt + processing job
+    Backend-->>Frontend: Return receipt id
+    Backend->>AI: Attempt extraction
+    alt OpenRouter succeeds
+        AI-->>Backend: Structured JSON
+    else OpenRouter fails
+        Backend->>AI: Retry through Gemini
+        alt Gemini succeeds
+            AI-->>Backend: Structured JSON
+        else Gemini fails
+            Backend->>Backend: Run Tesseract OCR fallback
+        end
+    end
+    Backend->>Backend: Validate and normalize fields
+    Backend->>Backend: Apply rules and exception checks
+    Backend->>DB: Update final receipt state
+    Frontend->>Backend: Poll receipt details
+    Backend-->>Frontend: processed / needs_review / failed
+```
 
-1. **Asking the AI:** While you are doing other things, the server sends the receipt to the AI (Google Gemini).
-2. **AI Analysis:** The AI looks at the picture and finds the store name, the price, and the date.
-3. **Applying Rules:** The server checks if you have any "Rules". For example, if the store is "Amazon", it might automatically set the category to "Office Supplies".
-4. **Updating the Database:** The server saves all this new information and changes the status to "Processed". If the AI was confused, it changes the status to "Needs Review".
+## State Model
 
-## 3. Watching for Updates
+```mermaid
+stateDiagram-v2
+    [*] --> queued
+    queued --> processing
+    processing --> processed
+    processing --> needs_review
+    processing --> failed
+    needs_review --> processed: manual correction
+```
 
-1. **The Website Checks:** Every few seconds, the website asks the server, "Is the receipt finished yet?".
-2. **Live Update:** As soon as the server says "Yes", the website updates the list to show the store name and the price.
-3. **Notification:** You get a small message (a toast) at the bottom of the screen saying the receipt is ready.
+## High-Level Modules
 
-## 4. Fixing Mistakes
+- `receiptController`: upload and receipt-facing HTTP endpoints
+- `receiptProcessingService`: queue orchestration and status transitions
+- `aiService`: provider selection and extraction fallback chain
+- `validationService`: field cleanup, normalization, confidence handling
+- `ruleService`: business rule application
+- `exceptionService`: review issue creation
+- `storageService`: file save and file read operations
 
-1. **User Review:** If you see something wrong, you click on the receipt.
-2. **Editing:** You type in the correct information.
-3. **Saving:** The server updates the database with your changes. If you changed the category, it might ask if you want to create a new rule for next time.
+## Failure Boundaries
+
+- Upload failure: request never creates a receipt record
+- Extraction failure: receipt is stored but marked `failed`
+- Low-confidence extraction: receipt moves to `needs_review`
+- Provider outage: system falls through to the next extraction layer
+
+## Operational Summary
+
+- Storage is synchronous at upload time.
+- Extraction is asynchronous after the initial acknowledgement.
+- Frontend status updates are polling-based.
+- CSV export is independent of receipt extraction and reads persisted data from the database.

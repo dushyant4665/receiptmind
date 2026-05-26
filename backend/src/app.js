@@ -17,13 +17,24 @@ const fileController = require('./controllers/fileController');
 const authenticate = require('./middleware/auth');
 
 const app = express();
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.set('trust proxy', 1);
 
 // Middleware
 app.use(helmet({
   crossOriginResourcePolicy: false,
 }));
 app.use(cors({
-  origin: [process.env.FRONTEND_URL || 'http://localhost:3000', 'http://localhost:3002'],
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('CORS origin not allowed'));
+  },
   credentials: true,
 }));
 app.use(morgan('dev'));

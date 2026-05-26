@@ -1,42 +1,165 @@
-# ReceiptMind
+# ReceiptMind Enterprise
 
-ReceiptMind is a smart tool that helps you manage your receipts. Instead of typing everything into a computer, you just upload a picture of your receipt, and the AI reads it for you. It finds the store name, the date, and how much you spent.
+ReceiptMind Enterprise is a two-app monorepo for receipt ingestion, AI-assisted extraction, review workflows, rules, exceptions, and CSV export.
 
-## What can it do?
+- `frontend/`: Next.js application intended for Vercel
+- `backend/`: Express API intended for Render
+- `docs/`: high-level product and system flow notes
 
-- AI Reading: It uses smart AI to read your receipts so you don't have to.
-- Fast Uploads: You can drop many receipts at once, and it will start working on them.
-- Smart Rules: You can tell the system that every time it sees "Starbucks", it should put it in the "Food" category.
-- Search: You can find any receipt by typing the name or even searching for receipts over a certain price.
-- Export: You can download all your data into a file that works with Excel.
-- Secure: Only people with a login can see the receipts.
+## Architecture
 
-## How do I use it?
+```mermaid
+flowchart LR
+    U[User] --> F[Next.js Frontend]
+    F -->|REST API| B[Express Backend]
+    B -->|SQL| D[(PostgreSQL)]
+    B -->|Upload / Read| S[Local Storage]
+    B -->|Primary Extraction| O[OpenRouter]
+    B -->|Fallback Extraction| G[Gemini]
+    B -->|Final OCR Fallback| T[Tesseract]
+    B --> E[Rules and Exceptions Engine]
+    E --> D
+```
 
-1. Sign Up: Create an account and verify your email.
-2. Upload: Go to the Receipts page and drop your files.
-3. Wait a Second: The AI will process the receipt in the background.
-4. Check it: You can click on a receipt to see what the AI found and fix it if it made a mistake.
-5. Search & Filter: Use the search bar to find exactly what you need.
+## Processing Flow
 
-## The Technology
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Backend
+    participant Storage
+    participant AI
+    participant DB
 
-This project is built with:
-- Next.js: For the website you see.
-- Node.js & Express: For the server that does the hard work.
-- PostgreSQL: For the database that stores everything safely.
-- Google Gemini: The AI brain that reads the receipts.
+    User->>Frontend: Upload receipt
+    Frontend->>Backend: POST /api/receipts/upload
+    Backend->>Storage: Save original file
+    Backend->>DB: Insert receipt and processing job
+    Backend-->>Frontend: Accepted with receipt id
+    Backend->>AI: Extract fields from file
+    AI-->>Backend: Structured response
+    Backend->>Backend: Validate, normalize, apply rules
+    Backend->>DB: Persist extracted data, status, confidence
+    Frontend->>Backend: Poll receipt status
+    Backend-->>Frontend: Processed / needs_review / failed
+```
 
-## Setting it up on your computer
+## Monorepo Structure
 
-### The Backend (Server)
-1. Go into the "backend" folder.
-2. Type "npm install" to get all the tools ready.
-3. Type "npm run dev" to start the server.
+```text
+receiptmind-enterprise/
+|- backend/
+|  |- src/
+|  |  |- config/       # database and runtime configuration
+|  |  |- controllers/  # HTTP request handlers
+|  |  |- db/           # schema and SQL migrations
+|  |  |- middleware/   # auth and request middleware
+|  |  |- routes/       # API route registration
+|  |  |- services/     # extraction, storage, rules, exports, email
+|  |  |- utils/        # shared helpers
+|  |  |- app.js        # express app assembly
+|  |  `- index.js      # process bootstrap
+|  |- uploads/         # local file storage
+|  |- exports/         # generated CSV files
+|  `- README.md
+|- frontend/
+|  |- app/             # Next.js App Router screens
+|  |- components/      # UI building blocks
+|  |- hooks/           # client data hooks
+|  |- lib/             # env, API, auth, shared client logic
+|  |- public/          # static assets
+|  `- README.md
+|- docs/
+|  `- FLOW.md
+`- render.yaml
+```
 
-### The Frontend (Website)
-1. Go into the "frontend" folder.
-2. Type "npm install" to get the website tools.
-3. Type "npm run dev" to start the website.
+## Runtime Model
 
-Now, open your web browser and go to http://localhost:3000.
+The backend uses a staged extraction strategy:
+
+1. `OpenRouter` is tried first for structured receipt extraction.
+2. `Gemini` is used as the provider fallback.
+3. `Tesseract` runs as the last-resort OCR fallback for image files.
+4. The validation layer normalizes fields, computes confidence, and decides whether the receipt is `processed` or `needs_review`.
+
+This keeps the pipeline resilient when one upstream provider is unavailable or rate-limited.
+
+## Local Development
+
+### Prerequisites
+
+- Node.js 20 or newer
+- PostgreSQL
+- API keys for at least one AI provider
+
+### Install
+
+```bash
+npm run install:all
+```
+
+### Configure
+
+Copy and fill the environment templates:
+
+- `backend/.env.example` -> `backend/.env`
+- `frontend/.env.example` -> `frontend/.env.local`
+
+### Run
+
+```bash
+npm run backend:dev
+npm run frontend:dev
+```
+
+Frontend defaults to `http://localhost:3000` and backend defaults to `http://localhost:3001`.
+
+## Deployment
+
+### Frontend on Vercel
+
+- Set the project root to `frontend`
+- Build command: `npm run build`
+- Output: default Next.js output
+- Required environment variables:
+  - `NEXT_PUBLIC_APP_URL`
+  - `NEXTAUTH_URL`
+  - `NEXTAUTH_SECRET`
+  - `NEXT_PUBLIC_API_URL`
+  - `BACKEND_API_URL`
+  - Supabase values if auth or storage flows depend on them
+
+### Backend on Render
+
+- Set the service root to `backend`
+- Build command: `npm install && npm run build`
+- Start command: `npm start`
+- Node version: 20+
+- Attach a PostgreSQL database
+- Configure environment variables from `backend/.env.example`
+
+The Render build failure shown earlier was caused by a missing backend `build` script. The backend package now includes a no-op build step so Render can complete its install/build/start pipeline cleanly.
+
+## Key Backend Endpoints
+
+- `POST /api/auth/*`: authentication flows
+- `POST /api/receipts/upload`: upload and enqueue receipt processing
+- `GET /api/receipts`: list receipts
+- `GET /api/files/:id`: stream uploaded file preview
+- `GET /api/exports/*`: export history and CSV downloads
+- `GET /health`: liveness check
+
+## Operational Notes
+
+- Uploaded files are stored on the backend filesystem by default.
+- `FRONTEND_URL` on the backend supports comma-separated origins for local and production clients.
+- `NEXT_PUBLIC_API_URL` should point directly to the deployed backend URL.
+- OCR fallback is image-only; PDF extraction depends on AI providers.
+
+## Documentation Map
+
+- [Backend guide](backend/README.md)
+- [Frontend guide](frontend/README.md)
+- [System flow and processing architecture](docs/FLOW.md)

@@ -6,8 +6,11 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "build": "echo 'Building backend... Done.'",
+    "build": "node -e \"console.log('backend build ok')\"",
     "test": "jest"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "keywords": [],
   "author": "",

@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ReceiptMind Frontend
 
-## Getting Started
+The frontend is a Next.js App Router application for upload, review, analytics, exceptions, and export workflows.
 
-First, run the development server:
+## Responsibilities
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Authenticate users
+- Submit receipt uploads
+- Poll receipt processing status
+- Render extracted data, confidence, and review states
+- Provide dashboards, filters, and export access
+
+## Folder Layout
+
+```text
+frontend/
+|- app/          # routes and page-level UI
+|- components/   # reusable interface components
+|- hooks/        # client-side data hooks
+|- lib/          # API client, auth, env, shared utilities
+|- public/       # static assets
+`- types/        # shared TypeScript types
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Runtime Notes
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- API calls are routed through `NEXT_PUBLIC_API_URL` or `BACKEND_API_URL`.
+- `next.config.js` rewrites `/api/*` traffic to the backend service.
+- `output: "standalone"` is enabled for clean production builds.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment Variables
 
-## Learn More
+Base configuration is documented in [`.env.example`](./.env.example).
 
-To learn more about Next.js, take a look at the following resources:
+Important variables:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `NEXT_PUBLIC_APP_URL`
+- `NEXTAUTH_URL`
+- `NEXTAUTH_SECRET`
+- `NEXT_PUBLIC_API_URL`
+- `BACKEND_API_URL`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Local Run
 
-## Deploy on Vercel
+```bash
+npm install
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Vercel Deployment
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Recommended Vercel settings:
+
+- Root Directory: `frontend`
+- Framework Preset: `Next.js`
+- Build Command: `npm run build`
+- Install Command: `npm install`
+
+Production environment values should point to the deployed backend URL, for example:
+
+```text
+NEXT_PUBLIC_API_URL=https://your-backend.onrender.com
+BACKEND_API_URL=https://your-backend.onrender.com
+NEXT_PUBLIC_APP_URL=https://your-frontend.vercel.app
+NEXTAUTH_URL=https://your-frontend.vercel.app
+```
+
+## Integration Boundary
+
+The frontend should treat the backend as the single source of truth for:
+
+- receipt state
+- extraction output
+- export generation
+- exception lifecycle
