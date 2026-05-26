@@ -6,46 +6,51 @@ const endpoints = [
   {
     category: "Authentication",
     items: [
-      { method: "POST", path: "/api/v1/auth/register", desc: "Create new account" },
-      { method: "POST", path: "/api/v1/auth/login", desc: "Authenticate user" },
-      { method: "POST", path: "/api/v1/auth/refresh", desc: "Refresh access token" },
-      { method: "POST", path: "/api/v1/auth/logout", desc: "Invalidate session" },
+      { method: "POST", path: "/auth/register", desc: "Create new account" },
+      { method: "POST", path: "/auth/login", desc: "Authenticate user" },
+      { method: "POST", path: "/auth/refresh", desc: "Refresh access token" },
+      { method: "POST", path: "/auth/logout", desc: "Invalidate session" },
     ],
   },
   {
     category: "Receipts",
     items: [
-      { method: "POST", path: "/api/v1/receipts/upload", desc: "Upload receipt images/PDFs" },
-      { method: "GET", path: "/api/v1/receipts", desc: "List all receipts" },
-      { method: "GET", path: "/api/v1/receipts/:id", desc: "Get receipt details" },
-      { method: "DELETE", path: "/api/v1/receipts/:id", desc: "Delete receipt" },
+      { method: "POST", path: "/receipts/upload", desc: "Upload receipt images or PDFs" },
+      { method: "GET", path: "/receipts", desc: "List all receipts" },
+      { method: "GET", path: "/receipts/:id", desc: "Get receipt details" },
+      { method: "PATCH", path: "/receipts/:id", desc: "Edit receipt fields" },
+      { method: "DELETE", path: "/receipts/:id", desc: "Delete receipt" },
+      { method: "POST", path: "/receipts/bulk/export", desc: "Export selected receipts as CSV" },
     ],
   },
   {
     category: "Expenses",
     items: [
-      { method: "POST", path: "/api/v1/expenses", desc: "Create expense record" },
-      { method: "GET", path: "/api/v1/expenses", desc: "List expenses" },
-      { method: "PUT", path: "/api/v1/expenses/:id", desc: "Update expense" },
-      { method: "DELETE", path: "/api/v1/expenses/:id", desc: "Delete expense" },
+      { method: "GET", path: "/expenses", desc: "List expense-style receipt records" },
     ],
   },
   {
     category: "Category Rules",
     items: [
-      { method: "GET", path: "/api/v1/rules", desc: "List auto-categorization rules" },
-      { method: "POST", path: "/api/v1/rules", desc: "Create new rule" },
-      { method: "PUT", path: "/api/v1/rules/:id", desc: "Update rule" },
-      { method: "DELETE", path: "/api/v1/rules/:id", desc: "Delete rule" },
+      { method: "GET", path: "/rules", desc: "List auto-categorization rules" },
+      { method: "POST", path: "/rules", desc: "Create new rule" },
     ],
   },
   {
     category: "Exceptions",
     items: [
-      { method: "GET", path: "/api/v1/exceptions", desc: "List exceptions" },
-      { method: "GET", path: "/api/v1/exceptions/stats", desc: "Exception statistics" },
-      { method: "POST", path: "/api/v1/exceptions/:id/resolve", desc: "Resolve exception" },
-      { method: "POST", path: "/api/v1/exceptions/:id/dismiss", desc: "Dismiss exception" },
+      { method: "GET", path: "/exceptions", desc: "List exceptions" },
+      { method: "POST", path: "/exceptions/:id/resolve", desc: "Resolve exception" },
+    ],
+  },
+  {
+    category: "Exports and Metrics",
+    items: [
+      { method: "GET", path: "/exports/csv", desc: "Export receipts as CSV" },
+      { method: "GET", path: "/exports/history", desc: "List export history" },
+      { method: "GET", path: "/metrics/processing-times", desc: "View processing duration summary" },
+      { method: "GET", path: "/metrics/summary", desc: "View receipt and exception summary" },
+      { method: "GET", path: "/dashboard", desc: "Get dashboard statistics" },
     ],
   },
 ];
@@ -53,6 +58,7 @@ const endpoints = [
 const methodColors: Record<string, string> = {
   GET: "bg-blue-100 text-blue-700",
   POST: "bg-green-100 text-green-700",
+  PATCH: "bg-amber-100 text-amber-700",
   PUT: "bg-amber-100 text-amber-700",
   DELETE: "bg-red-100 text-red-700",
 };
@@ -72,7 +78,7 @@ export default function ApiDocsPage() {
 
         <div className="mt-8 rounded-[12px] border border-border-default bg-bg-surface p-4">
           <p className="font-mono text-[13px] text-text-secondary">
-            <span className="text-text-ghost">Base URL:</span> https://api.receiptmind.io/api/v1
+            <span className="text-text-ghost">Base URL:</span> https://your-backend-domain.com
           </p>
         </div>
 

@@ -15,8 +15,9 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogClose, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Receipt } from "@/types";
 import { globalImageCache } from "@/lib/image-cache";
+import { getApiUrl } from "@/lib/env";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
+const apiUrl = getApiUrl();
 
 function getReceiptImageSrc(url?: string) {
   if (!url) return "";

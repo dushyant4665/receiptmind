@@ -25,7 +25,7 @@ frontend/
 ## Runtime Notes
 
 - API calls are routed through `NEXT_PUBLIC_API_URL` or `BACKEND_API_URL`.
-- `next.config.js` rewrites `/api/*` traffic to the backend service.
+- NextAuth uses the frontend's own `/api/auth/*` routes, so backend calls should stay on explicit backend URLs.
 - `output: "standalone"` is enabled for clean production builds.
 
 ## Environment Variables
