@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Menu } from "lucide-react";
+import { ArrowRight, Menu, Clock, Zap, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const navLinks = [

@@ -1,6 +1,6 @@
+require('dotenv').config({ override: true });
 const app = require('./app');
 const runMigrations = require('./db/migrations');
-require('dotenv').config();
 
 const PORT = process.env.PORT || 3001;
 

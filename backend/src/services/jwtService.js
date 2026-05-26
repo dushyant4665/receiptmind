@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-require('dotenv').config();
+require('dotenv').config({ override: true });
 
 const generateAccessToken = (userId, organizationId) => {
   return jwt.sign(

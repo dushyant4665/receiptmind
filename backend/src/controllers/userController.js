@@ -26,8 +26,12 @@ const updateMe = async (req, res) => {
   const { userId } = req.user;
   const { name } = req.body;
 
+  if (name !== undefined && typeof name !== 'string') {
+    return res.status(400).json(errorResponse('Name must be a string'));
+  }
+
   try {
-    await db.query('UPDATE users SET name = $1 WHERE id = $2', [name, userId]);
+    await db.query('UPDATE users SET name = $1 WHERE id = $2', [(name || '').trim(), userId]);
     return getMe(req, res);
   } catch (error) {
     console.error('Update me error:', error);

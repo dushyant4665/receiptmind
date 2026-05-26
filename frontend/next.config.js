@@ -2,7 +2,6 @@
 const nextConfig = {
   output: "standalone",
   poweredByHeader: false,
-  allowedDevOrigins: ["127.0.0.1"],
   experimental: {
     optimizePackageImports: ["lucide-react"],
   },
@@ -10,27 +9,13 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "**.r2.cloudflarestorage.com",
+        hostname: "**",
       },
       {
         protocol: "http",
-        hostname: "localhost",
-        port: "8085",
-        pathname: "/uploads/**",
+        hostname: "**",
       },
     ],
-  },
-  async rewrites() {
-    return [
-      {
-        source: "/api/auth/:path*",
-        destination: "/api/auth/:path*",
-      },
-      {
-        source: "/api/:path*",
-        destination: "http://localhost:8085/:path*",
-      },
-    ];
   },
 };
 

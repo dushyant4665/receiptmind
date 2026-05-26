@@ -1,10 +1,22 @@
 # ReceiptMind Enterprise
 
-ReceiptMind is an intelligent expense automation and document extraction platform designed for finance teams, operations, and modern enterprises. By combining advanced AI models with reliable processing, it eliminates manual data entry, guarantees high extraction accuracy through exception handling, and automates organizational workflows.
+ReceiptMind is an AI-powered receipt processing platform built for operators, finance teams, and modern enterprises. Stop typing manual expenses and start uploading.
 
-## Architecture
+## 🚀 Features
 
-The platform is built as a decoupled, multi-tenant application designed for performance, resilience, and easy deployment.
+- **✅ AI Extraction Engine:** Powered by Gemini/OpenRouter to automatically extract Vendor, Amount, Date, and Category from raw images and PDFs.
+- **✅ Confidence Scoring:** Receipts with low confidence (<75%) are automatically routed to the Exceptions Inbox for human review.
+- **✅ Asynchronous Processing:** Redis + Bull queue ensures zero dropped uploads, processing files in the background.
+- **✅ Multi-Tenant Organizations:** Every receipt, user, and rule is strictly scoped to an organization.
+- **✅ Smart Rules Engine:** Auto-categorize receipts based on vendor conditions.
+- **✅ Dashboard & UI:** A sleek, premium, "Apple-esque" SaaS dashboard with data grids, bulk actions, and side-panel editing.
+- **✅ CSV Export:** Filter receipts by date, amount, or status and export to CSV instantly.
+- **✅ Duplicate Detection:** Blocks duplicate file uploads by computing SHA-256 hashes.
+- **✅ JWT Security:** Secure session handling with HttpOnly refresh tokens and short-lived access tokens.
+
+## 🏗 High-Level Architecture
+
+ReceiptMind is built on a modern decoupled stack:
 
 ```mermaid
 graph TD
@@ -12,110 +24,82 @@ graph TD
     classDef client fill:#f9f9f9,stroke:#333,stroke-width:2px,color:#333
     classDef backend fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0284c7
     classDef database fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#db2777
+    classDef queue fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#d97706
     classDef ai fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#7c3aed
 
     %% Nodes
     Client["Next.js Frontend\n(App Router, Tailwind)"]:::client
     API["Node.js Backend\n(Express API)"]:::backend
+    Worker["Background Worker\n(Node.js Bull)"]:::backend
     DB[(PostgreSQL)]:::database
+    Redis[(Redis Queue)]:::queue
     Storage[("File Storage\n(Local/S3)")]:::database
     AI["Gemini / OpenRouter\n(LLM API)"]:::ai
 
     %% Edges
     Client -- "REST API (JWT)" --> API
     API -- "CRUD / Auth" --> DB
+    API -- "Enqueue Job" --> Redis
     API -- "Save File" --> Storage
-    API -- "Extract Data" --> AI
-    API -- "Update Status" --> DB
+    Worker -- "Dequeue Job" --> Redis
+    Worker -- "Read File" --> Storage
+    Worker -- "Extract Data" --> AI
+    Worker -- "Update Status" --> DB
 ```
 
-### Component Details
+### Components:
+1. **Frontend:** Next.js 14 App Router, Tailwind CSS, React Query, Lucide Icons.
+2. **Backend API:** Node.js, Express, jsonwebtoken, pg (node-postgres).
+3. **Background Worker:** A standalone Node process that consumes Bull queue jobs, reads from storage, and communicates with Gemini for OCR and data extraction.
+4. **Data Layer:** PostgreSQL for relational data, Redis for queues.
 
-- **Frontend**: A Next.js 16 application utilising the App Router, Tailwind CSS, and React Query. The user interface prioritises minimal visual noise, fast page transitions, and structured datagrids for high-throughput expense management.
-- **Backend API**: A Node.js and Express REST API that handles authentication, multi-tenant scoping, receipt ingestion, rules management, and administrative operations. Receipts are processed immediately in the background without requiring a separate queue.
-- **Relational Storage**: PostgreSQL acts as the core database, storing relational structures for organizations, users, receipts, rules, and exception logs.
+## 📊 Peak Booking System & Automatic CSV Export
 
-## Core Capabilities
+The system automatically logs every successfully processed receipt into an Excel-friendly CSV ledger located at `backend/exports/receipts_peak.csv`.
 
-- **AI Extraction Engine**: Extracts complex transactional schemas from raw images or PDFs using Google Gemini. The engine normalizes vendor names, amounts, tax details, GSTIN identifiers, currency codes, invoice numbers, and due dates.
-- **Exceptions Inbox**: Receipts with extraction confidence below 75% or those missing critical compliance fields are flagged. They are routed to a human review queue, allowing operators to easily audit and correct entries.
-- **Custom Rules Engine**: Allows organizations to build conditional criteria (such as vendor matches) that automatically assign categories, departments, or custom labels to receipts on ingestion.
-- **Dual-Token JWT Authentication**: Uses short-lived access tokens and secure, database-verified, HTTP-only refresh tokens to manage persistent sessions safely.
-- **Duplicate Prevention**: Computes cryptographic SHA-256 hashes of incoming payloads to identify and block duplicate receipts before database entry.
-- **Data Portability**: Full search, date, and status filter criteria with an immediate CSV export builder.
+- **Excel Compatibility:** The exported file is pre-formatted with a UTF-8 BOM (`\ufeff`) header and fields are escaped using double-quotes to ensure seamless rendering without configuration issues when opened in Microsoft Excel.
+- **Workflow:** 
+  1. Receipt Uploaded via `POST /receipts/upload`.
+  2. OCR extracted by Tesseract.js.
+  3. Gemini AI models extract structured receipt fields (Vendor, Amount, Currency, Category, Date, Confidence).
+  4. Auto-rules applied.
+  5. The details are recorded in the database, and the record is appended as a line to the `receipts_peak.csv` log.
 
-## Local Development
+### Columns Exported:
+- `Receipt ID`
+- `Vendor Name`
+- `Amount`
+- `Currency`
+- `Category`
+- `Receipt Date`
+- `Confidence`
+- `Status`
 
-### Prerequisites
+## 🧪 Development Setup
 
-You need PostgreSQL and Node.js (version 18 or above) installed on your machine.
+To run locally without Docker:
 
-### Setup Steps
+**1. Database Setup:**
+Ensure PostgreSQL and Redis are running on your machine.
+Run the schema migrations located in `nodejs-backend/src/db/migrations/`.
 
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/dushyant4665/receiptmind.git
-   cd receiptmind-enterprise
-   ```
+**2. Backend:**
+```bash
+cd nodejs-backend
+npm install
+npm run dev
+```
 
-2. **Database Settings**
-   Configure your PostgreSQL connection. Ensure your target PostgreSQL database is created.
+**3. Frontend:**
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-3. **Backend Configuration**
-   Navigate to the backend directory, copy `.env.example` to `.env`, and fill in the required variables (including your database credentials and Gemini API key).
-   ```bash
-   cd backend
-   npm install
-   # Run migrations
-   node scripts/migrate_db.js
-   # Start in development mode
-   npm run dev
-   ```
+## 🔐 Security & Auth
 
-4. **Frontend Configuration**
-   Navigate to the frontend directory, copy `.env.example` to `.env.local`, and point the API URL to your local backend.
-   ```bash
-   cd ../frontend
-   npm install
-   npm run dev
-   ```
-
-## Docker Deployment
-
-To spin up the entire system locally inside containerized environments:
-
-1. Configure your environment variables in `docker-compose.yml` or within your environment context.
-2. Run the compose file:
-   ```bash
-   docker-compose up -d --build
-   ```
-
-## Production Deployment
-
-### Backend (Render)
-
-The backend service is designed to deploy on Render as a Web Service.
-
-1. **New Web Service**: Connect your GitHub repository to Render.
-2. **Build Configuration**:
-   - Environment: Node
-   - Root Directory: `backend`
-   - Build Command: `npm install`
-   - Start Command: `npm start`
-3. **Environment Variables**: Add your production values for:
-   - `DATABASE_URL` (PostgreSQL)
-   - `JWT_SECRET`
-   - `GEMINI_API_KEY`
-4. **Health Check**: Configure `/health` as the monitoring endpoint.
-
-### Frontend (Vercel)
-
-The Next.js frontend is optimized for serverless hosting on Vercel.
-
-1. **Import Project**: Import the repository into the Vercel dashboard.
-2. **Project Settings**:
-   - Framework Preset: Next.js
-   - Root Directory: `frontend`
-3. **Environment Variables**:
-   - Set `NEXT_PUBLIC_API_URL` to your production Render backend URL.
-4. **Deploy**: Click deploy. Vercel automatically builds, checks TypeScript types, and serves your client-side routes.
+ReceiptMind uses an industry-standard dual-token system:
+- **Access Tokens:** Short-lived JWTs (15m) passed in the `Authorization` header.
+- **Refresh Tokens:** Long-lived JWTs (7d) stored securely in the `sessions` database table and validated on the `/api/auth/refresh` endpoint.
+- **Hashing:** Passwords are cryptographically hashed using `bcryptjs`.

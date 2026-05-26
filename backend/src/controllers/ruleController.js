@@ -2,6 +2,9 @@ const db = require('../config/db');
 const crypto = require('crypto');
 const { successResponse, errorResponse } = require('../utils/response');
 
+const VALID_CONDITION_TYPES = new Set(['vendor', 'category', 'amount_range']);
+const VALID_ACTION_TYPES = new Set(['set_category', 'ignore', 'recurring']);
+
 const createRule = async (req, res) => {
   const { organizationId } = req.user;
   const { condition_type, condition_value, action_type, action_value } = req.body;
@@ -10,13 +13,11 @@ const createRule = async (req, res) => {
     return res.status(400).json(errorResponse('All fields are required: condition_type, condition_value, action_type, action_value'));
   }
 
-  const validConditionTypes = ['vendor', 'category', 'amount_range'];
-  if (!validConditionTypes.includes(condition_type)) {
+  if (!VALID_CONDITION_TYPES.has(condition_type)) {
     return res.status(400).json(errorResponse('Invalid condition_type. allowed: vendor, category, amount_range'));
   }
 
-  const validActionTypes = ['set_category', 'ignore', 'recurring'];
-  if (!validActionTypes.includes(action_type)) {
+  if (!VALID_ACTION_TYPES.has(action_type)) {
     return res.status(400).json(errorResponse('Invalid action_type. allowed: set_category, ignore, recurring'));
   }
 

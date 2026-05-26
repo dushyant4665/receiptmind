@@ -16,7 +16,6 @@ const exportRoutes = require('./routes/exportRoutes');
 const fileController = require('./controllers/fileController');
 const authenticate = require('./middleware/auth');
 
-
 const app = express();
 
 // Middleware
@@ -35,10 +34,10 @@ app.use(express.urlencoded({ extended: true }));
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
-  message: { status: 'error', message: 'Too many requests, please try again later' },
+  message: { success: false, error: 'Too many requests, please try again later' },
 });
 
-// Static files
+// Static files - serves files from backend/uploads
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Routes
@@ -52,24 +51,23 @@ app.use('/rules', ruleRoutes);
 app.use('/users', userRoutes);
 app.use('/exports', exportRoutes);
 
-// File serving endpoint (parity with Go)
+// File serving endpoint
 app.get('/api/files/:id', authenticate, fileController.getFile);
-
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() });
 });
 
 app.get('/ready', (req, res) => {
-  res.json({ status: 'ready', timestamp: new Date().toISOString() });
+  res.json({ success: true, status: 'ready', timestamp: new Date().toISOString() });
 });
 
 // Error handling
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({
-    status: 'error',
-    message: err.message || 'Something went wrong!',
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Something went wrong!',
   });
 });
 

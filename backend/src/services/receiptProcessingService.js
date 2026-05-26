@@ -3,11 +3,19 @@ const storageService = require('./storageService');
 const aiService = require('./aiService');
 const ruleService = require('./ruleService');
 const exceptionService = require('./exceptionService');
-const ocrService = require('./ocrService');
+const validationService = require('./validationService');
+const csvExportService = require('./csvExportService');
 
-// Simple queue to manage concurrent AI requests
 const processingQueue = [];
 let isProcessing = false;
+const MIME_BY_EXTENSION = {
+  '.pdf': 'application/pdf',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.heic': 'image/heic',
+  '.heif': 'image/heic',
+  '.gif': 'image/gif',
+};
 
 const processNextInQueue = async () => {
   if (isProcessing || processingQueue.length === 0) return;
@@ -22,8 +30,8 @@ const processNextInQueue = async () => {
     reject(error);
   } finally {
     isProcessing = false;
-    // Increased delay to 5 seconds to be extremely safe with Free Tier RPM
-    setTimeout(processNextInQueue, 5000);
+    // Set delay to 250ms for near-instant processing
+    setTimeout(processNextInQueue, 250);
   }
 };
 
@@ -51,42 +59,26 @@ const executeProcessing = async (receiptId, filePath, orgId) => {
     );
 
     const fileBuffer = await storageService.downloadFile(filePath);
+    const mimeType = detectMimeType(filePath);
+
+    console.log(`Starting AI extraction for receipt ${receiptId}`);
+    const extraction = await aiService.extractWithContext(fileBuffer, mimeType);
     
-    const ext = (filePath || '').toLowerCase();
-    let mimeType = 'image/jpeg';
-    if (ext.endsWith('.pdf')) mimeType = 'application/pdf';
-    else if (ext.endsWith('.png')) mimeType = 'image/png';
-    else if (ext.endsWith('.webp')) mimeType = 'image/webp';
-    else if (ext.endsWith('.heic') || ext.endsWith('.heif')) mimeType = 'image/heic';
-    else if (ext.endsWith('.gif')) mimeType = 'image/gif';
-
-    let ocrText = '';
-    let extraction;
-
-    try {
-      console.log(`Starting fast AI extraction (direct image) for receipt ${receiptId}`);
-      extraction = await aiService.extractWithContext(fileBuffer, '', mimeType);
-    } catch (error) {
-      console.warn(`Direct AI extraction failed, falling back to OCR + Heuristic:`, error.message);
-      console.log(`Starting OCR fallback for receipt ${receiptId}`);
-      ocrText = await ocrService.extractText(fileBuffer, mimeType);
-      console.log(`OCR completed for receipt ${receiptId}, chars: ${ocrText?.length || 0}`);
-      extraction = await aiService.extractWithContext(fileBuffer, ocrText, mimeType);
-    }
-
-    extraction = await ruleService.applyRules(orgId, extraction);
+    console.log(`AI extraction finished for receipt ${receiptId}.`);
+    
+    const ruledExtraction = await ruleService.applyRules(orgId, extraction);
+    const { sanitized: finalizedExtraction, needsReview } = validationService.validateExtraction(ruledExtraction);
 
     // Ensure amount is numeric and date is valid
-    const amount = Number(extraction.amount) || 0;
-    const date = extraction.receipt_date || null;
-    const vendor = extraction.vendor_name || 'Unknown';
-    const confidence = Number(extraction.confidence) || 0;
+    const amount = Number(finalizedExtraction.amount) || 0;
+    const date = finalizedExtraction.receipt_date || null;
+    const vendor = finalizedExtraction.vendor_name || 'Unknown';
+    const confidence = Number(finalizedExtraction.confidence) || 0;
 
-    const needsReview = confidence < 0.9 || !extraction.vendor_name || amount <= 0 || !date;
     const newStatus = needsReview ? 'needs_review' : 'processed';
 
-    const aiOutput = toStructuredAiOutput(extraction);
-    const rawExtraction = toRawExtraction(extraction);
+    const aiOutput = toStructuredAiOutput(finalizedExtraction);
+    const rawExtraction = toRawExtraction(finalizedExtraction);
 
     await db.query(
       `UPDATE receipts SET
@@ -114,15 +106,15 @@ const executeProcessing = async (receiptId, filePath, orgId) => {
       WHERE id = $20`,
       [
         newStatus,
-        vendor, amount, date, extraction.category, confidence,
-        vendor, amount, date, extraction.category, confidence,
+        vendor, amount, date, finalizedExtraction.category, confidence,
+        vendor, amount, date, finalizedExtraction.category, confidence,
         confidence, confidence,
-        needsReview, ocrText || '', aiOutput || {}, rawExtraction || {}, extraction.currency || 'USD', newStatus,
+        needsReview, finalizedExtraction.raw_text || '', aiOutput || {}, rawExtraction || {}, finalizedExtraction.currency || 'USD', newStatus,
         receiptId,
       ]
     );
 
-    await exceptionService.checkAndCreate(receiptId, orgId, extraction);
+    await exceptionService.checkAndCreate(receiptId, orgId, finalizedExtraction);
 
     await db.query(
       `UPDATE receipt_processing_jobs
@@ -131,32 +123,29 @@ const executeProcessing = async (receiptId, filePath, orgId) => {
       [newStatus, receiptId]
     );
 
+    // Append to CSV log for Peak Booking System
+    try {
+      await csvExportService.appendReceipt({
+        id: receiptId,
+        vendor_name: vendor,
+        amount,
+        currency: finalizedExtraction.currency || 'USD',
+        category: finalizedExtraction.category,
+        receipt_date: date,
+        confidence,
+        status: newStatus,
+      });
+      console.log(`Receipt ${receiptId} exported to CSV log.`);
+    } catch (csvError) {
+      console.error(`Failed to append receipt ${receiptId} to CSV:`, csvError);
+    }
+
     console.log(`Receipt ${receiptId} processed successfully with status ${newStatus}`);
     return { success: true, status: newStatus };
   } catch (error) {
     console.error(`Error processing receipt ${receiptId}:`, error);
     
-    let errorMessage = error.message || 'Unknown error occurred';
-    let errorCategory = 'internal_error';
-    
-    if (errorMessage.includes('Gemini API error')) {
-      if (errorMessage.includes('403') || errorMessage.includes('PERMISSION_DENIED')) {
-        errorMessage = 'Gemini API access denied. Please check your API key configuration.';
-        errorCategory = 'auth_error';
-      } else if (errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
-        errorMessage = 'Gemini API quota exceeded. Free tier limit reached.';
-        errorCategory = 'quota_error';
-      } else if (errorMessage.includes('400') || errorMessage.includes('INVALID_ARGUMENT')) {
-        errorMessage = 'Invalid request format sent to Gemini. Please try a different file.';
-        errorCategory = 'format_error';
-      } else if (errorMessage.includes('500') || errorMessage.includes('INTERNAL')) {
-        errorMessage = 'Gemini Server Error. Please try again in a few minutes.';
-        errorCategory = 'ai_service_error';
-      }
-    } else if (errorMessage.includes('Failed to parse AI response')) {
-      errorMessage = 'AI returned an unreadable response. This often happens with very blurry receipts.';
-      errorCategory = 'parsing_error';
-    }
+    const errorMessage = mapProcessingError(error);
     
     await db.query(
       "UPDATE receipts SET status = 'failed', processing_state = 'failed', processing_finished_at = NOW(), updated_at = NOW() WHERE id = $1",
@@ -171,6 +160,37 @@ const executeProcessing = async (receiptId, filePath, orgId) => {
     // No need to throw here as it's a background process, but we log it
     console.error(`Final processing failure for ${receiptId}: ${errorMessage}`);
   }
+};
+
+const detectMimeType = (filePath) => {
+  const lowerPath = String(filePath || '').toLowerCase();
+  const extension = Object.keys(MIME_BY_EXTENSION).find((ext) => lowerPath.endsWith(ext));
+  return extension ? MIME_BY_EXTENSION[extension] : 'image/jpeg';
+};
+
+const mapProcessingError = (error) => {
+  const message = error?.message || 'Unknown error occurred';
+
+  if (message.includes('Gemini API error')) {
+    if (message.includes('403') || message.includes('PERMISSION_DENIED')) {
+      return 'Gemini API access denied. Please check your API key configuration.';
+    }
+    if (message.includes('429') || message.includes('RESOURCE_EXHAUSTED')) {
+      return 'Gemini API quota exceeded. Free tier limit reached.';
+    }
+    if (message.includes('400') || message.includes('INVALID_ARGUMENT')) {
+      return 'Invalid request format sent to Gemini. Please try a different file.';
+    }
+    if (message.includes('500') || message.includes('INTERNAL')) {
+      return 'Gemini Server Error. Please try again in a few minutes.';
+    }
+  }
+
+  if (message.includes('Failed to parse AI response')) {
+    return 'AI returned an unreadable response. This often happens with very blurry receipts.';
+  }
+
+  return message;
 };
 
 const toStructuredAiOutput = (extraction) => ({

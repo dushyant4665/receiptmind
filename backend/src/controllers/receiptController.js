@@ -1,5 +1,4 @@
 const crypto = require('crypto');
-const path = require('path');
 const db = require('../config/db');
 const storageService = require('../services/storageService');
 const ruleService = require('../services/ruleService');

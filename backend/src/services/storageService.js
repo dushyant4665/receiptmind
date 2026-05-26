@@ -1,20 +1,26 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-require('dotenv').config();
+require('dotenv').config({ override: true });
+
+const storageRoot = path.resolve(process.env.STORAGE_PATH || './uploads');
+
+const ensureParentDir = (targetPath) => {
+  const dir = path.dirname(targetPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+};
+
+const resolveStoragePath = (filePath) => path.join(storageRoot, filePath);
 
 const uploadFile = async (buffer, filename, orgId) => {
   const ext = path.extname(filename);
   const newFilename = `${crypto.randomUUID()}${ext}`;
-  const orgDir = path.join(process.env.STORAGE_PATH, orgId);
-
-  if (!fs.existsSync(orgDir)) {
-    fs.mkdirSync(orgDir, { recursive: true });
-  }
-
   const filePath = path.join(orgId, newFilename);
-  const fullPath = path.join(process.env.STORAGE_PATH, filePath);
+  const fullPath = resolveStoragePath(filePath);
 
+  ensureParentDir(fullPath);
   fs.writeFileSync(fullPath, buffer);
 
   return filePath;
@@ -26,14 +32,14 @@ const getSignedURL = async (filePath) => {
 };
 
 const deleteFile = async (filePath) => {
-  const fullPath = path.join(process.env.STORAGE_PATH, filePath);
+  const fullPath = resolveStoragePath(filePath);
   if (fs.existsSync(fullPath)) {
     fs.unlinkSync(fullPath);
   }
 };
 
 const downloadFile = async (filePath) => {
-  const fullPath = path.join(process.env.STORAGE_PATH, filePath);
+  const fullPath = resolveStoragePath(filePath);
   return fs.readFileSync(fullPath);
 };
 

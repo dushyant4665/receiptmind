@@ -1,10 +1,13 @@
 {
-  "name": "receiptmind-root",
+  "name": "receiptmind-enterprise",
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "postinstall": "cd backend && npm install",
-    "build": "echo 'No root build required'",
-    "start": "npm start --prefix backend"
+    "backend:dev": "npm run dev --prefix backend",
+    "backend:start": "npm start --prefix backend",
+    "frontend:dev": "npm run dev --prefix frontend",
+    "frontend:build": "npm run build --prefix frontend",
+    "frontend:start": "npm start --prefix frontend",
+    "install:all": "npm install --prefix backend && npm install --prefix frontend"
   }
 }

@@ -40,19 +40,19 @@ const resolveException = async (req, res) => {
     const params = [];
     let paramIdx = 1;
 
-    if (vendor_name) {
+    if (vendor_name !== undefined) {
       updates.push(`vendor_name = $${paramIdx++}`);
       params.push(vendor_name);
     }
-    if (amount) {
+    if (amount !== undefined) {
       updates.push(`amount = $${paramIdx++}`);
       params.push(amount);
     }
-    if (category) {
+    if (category !== undefined) {
       updates.push(`category = $${paramIdx++}`);
       params.push(category);
     }
-    if (receipt_date) {
+    if (receipt_date !== undefined) {
       updates.push(`receipt_date = $${paramIdx++}`);
       params.push(receipt_date);
     }
@@ -62,7 +62,7 @@ const resolveException = async (req, res) => {
       const query = `UPDATE receipts SET ${updates.join(', ')} WHERE id = $${paramIdx}`;
       await db.query(query, params);
 
-      if (vendor_name && category) {
+      if (vendor_name !== undefined && category !== undefined) {
         await ruleService.autoLearnFromEdit(organizationId, vendor_name, category);
       }
     }

@@ -1,20 +1,7 @@
 const crypto = require('crypto');
 const db = require('../config/db');
 const { successResponse, errorResponse } = require('../utils/response');
-
-const excelSafeDate = (date) => {
-  if (!date) return '';
-  const d = date instanceof Date ? date : new Date(date);
-  if (isNaN(d.getTime())) return '';
-  return `\t${d.toISOString().split('T')[0]}`;
-};
-
-const excelSafeDateTime = (date) => {
-  if (!date) return '';
-  const d = date instanceof Date ? date : new Date(date);
-  if (isNaN(d.getTime())) return '';
-  return `\t${d.toISOString().replace('T', ' ').split('.')[0]}`;
-};
+const { quoteCsv, toIsoDate, toIsoDateTime } = require('../utils/csv');
 
 const exportCSV = async (req, res) => {
   const { organizationId, userId } = req.user;
@@ -122,18 +109,18 @@ const exportCSV = async (req, res) => {
     for (const r of rows) {
       const row = [
         r.id,
-        `"${(r.export_vendor || '').replace(/"/g, '""')}"`,
+        quoteCsv(r.export_vendor || ''),
         r.export_amount,
         r.export_currency,
-        `"${(r.export_category || '').replace(/"/g, '""')}"`,
-        excelSafeDate(r.export_date),
+        quoteCsv(r.export_category || ''),
+        `\t${toIsoDate(r.export_date)}`,
         `${(r.export_confidence * 100).toFixed(0)}%`,
         r.status,
         r.export_source,
-        `"${(r.export_file_name || '').replace(/"/g, '""')}"`,
+        quoteCsv(r.export_file_name || ''),
         r.needs_review,
-        excelSafeDateTime(r.created_at),
-        excelSafeDateTime(r.export_updated_at)
+        `\t${toIsoDateTime(r.created_at)}`,
+        `\t${toIsoDateTime(r.export_updated_at)}`
       ];
       csvContent += row.join(',') + '\n';
     }

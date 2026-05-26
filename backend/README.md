@@ -1,33 +1,21 @@
-# ReceiptMind Node.js Backend
+# ReceiptMind Backend
 
 ## Features
-- Full Authentication (Register, Login, Email Verification, Password Reset)
-- Receipt Management (Upload, List, Edit, Delete, Bulk Export)
-- AI-powered Extraction (Gemini 1.5 Flash / OpenAI)
-- Rule Engine & Exception Tracking
-- Dashboard Statistics
-- Immediate Background Processing (no queue required)
+- authentication
+- receipt upload and processing
+- Gemini-only AI extraction
+- rules, exceptions, metrics, and CSV exports
 
-## Tech Stack
-- **Runtime:** Node.js
-- **Framework:** Express.js
-- **Database:** PostgreSQL
-- **AI:** Google Gemini / OpenAI
-- **Mailer:** Nodemailer (SMTP)
+## Structure
+- `src/config` database setup
+- `src/controllers` request handlers
+- `src/db` migrations
+- `src/middleware` auth
+- `src/routes` API routes
+- `src/services` business logic
+- `src/utils` shared response helpers
 
-## Project Structure
-```
-src/
-├── config/      # DB configuration
-├── controllers/ # Request handlers
-├── middleware/  # Auth and other middlewares
-├── routes/      # API routes
-├── services/    # Business logic (AI, Email, Storage, JWT, Receipt Processing)
-├── app.js       # Express app setup
-└── index.js     # Entry point
-```
-
-## Setup
+## Run
 1. `npm install`
-2. Configure `.env` file
-3. `npm start` or `npm run dev`
+2. configure `.env`
+3. `npm start`

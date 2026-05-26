@@ -1,9 +1,7 @@
 const request = require('supertest');
 const app = require('../src/app');
 const db = require('../src/config/db');
-const jwtService = require('../src/services/jwtService');
 const emailService = require('../src/services/emailService');
-const crypto = require('crypto');
 
 // Mock Database
 jest.mock('../src/config/db', () => ({
@@ -13,22 +11,9 @@ jest.mock('../src/config/db', () => ({
   },
 }));
 
-// Mock Redis
-jest.mock('../src/config/redis', () => ({
-  client: {
-    get: jest.fn(),
-    set: jest.fn(),
-    setEx: jest.fn(),
-    del: jest.fn(),
-    keys: jest.fn(() => []),
-  },
-  connectRedis: jest.fn(),
-}));
-
 // Mock Services
 jest.mock('../src/services/emailService');
 jest.mock('../src/services/storageService');
-jest.mock('../src/services/queueService');
 
 describe('Comprehensive API Tests', () => {
   beforeEach(() => {
@@ -47,7 +32,7 @@ describe('Comprehensive API Tests', () => {
       db.query.mockResolvedValueOnce({ rows: [] }); // Insert pending
 
       const res = await request(app)
-        .post('/api/auth/register')
+        .post('/auth/register')
         .send(testUser);
 
       expect(res.status).toBe(200);
@@ -254,12 +239,12 @@ describe('Comprehensive API Tests', () => {
       token = 'Bearer valid-token';
     });
 
-    it('GET /receipts/export/csv - Success', async () => {
+    it('GET /exports/csv - Success', async () => {
       db.query.mockResolvedValueOnce({ rows: [{ id: 'export-id' }] });
       db.query.mockResolvedValueOnce({ rows: [{ id: 'receipt-id' }] });
 
       const res = await request(app)
-        .get('/receipts/export/csv')
+        .get('/exports/csv')
         .set('Authorization', token);
 
       expect(res.status).toBe(200);
@@ -289,6 +274,32 @@ describe('Comprehensive API Tests', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.email).toBe('test@example.com');
+    });
+  });
+
+  describe('CSV Export Service', () => {
+    it('should correctly format and append receipt data to receipts_peak.csv', async () => {
+      const csvExportService = require('../src/services/csvExportService');
+      const fs = require('fs').promises;
+      
+      const record = {
+        id: 'test-uuid-1234',
+        vendor_name: 'Supermarket, Inc.',
+        amount: 84.50,
+        currency: 'USD',
+        category: 'Meals & Entertainment',
+        receipt_date: '2026-05-25',
+        confidence: 0.95,
+        status: 'processed'
+      };
+
+      await csvExportService.appendReceipt(record);
+      
+      const content = await fs.readFile(csvExportService.csvPath, 'utf8');
+      expect(content).toContain('Receipt ID');
+      expect(content).toContain('Supermarket, Inc.');
+      expect(content).toContain('84.5');
+      expect(content).toContain('95%');
     });
   });
 

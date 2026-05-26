@@ -1,13 +1,15 @@
 const nodemailer = require('nodemailer');
-require('dotenv').config();
+require('dotenv').config({ override: true });
+
+const cleanEnv = (value) => String(value || '').replace(/"/g, '').trim();
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: process.env.SMTP_PORT,
-  secure: process.env.SMTP_PORT == 465, // true for 465, false for other ports
+  secure: process.env.SMTP_PORT == 465,
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS.replace(/"/g, ''), // Remove quotes if any
+    user: cleanEnv(process.env.SMTP_USER),
+    pass: cleanEnv(process.env.SMTP_PASS),
   },
 });
 
@@ -53,6 +55,10 @@ const getEmailTemplate = (title, message, url, buttonText) => {
 };
 
 const sendEmail = async (to, subject, html) => {
+  if (!process.env.SMTP_HOST || !process.env.SMTP_FROM) {
+    throw new Error('SMTP is not configured');
+  }
+
   const mailOptions = {
     from: process.env.SMTP_FROM,
     to,
