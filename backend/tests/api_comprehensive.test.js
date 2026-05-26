@@ -1,4 +1,5 @@
 const request = require('supertest');
+const crypto = require('crypto');
 const app = require('../src/app');
 const db = require('../src/config/db');
 const emailService = require('../src/services/emailService');

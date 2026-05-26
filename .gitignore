@@ -1,22 +1,32 @@
+# Node modules
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
 # Local environment
+.env
 backend/.env
 frontend/.env.local
+frontend/.env
 
-# Node / Next.js
-frontend/node_modules/
+# Next.js
 frontend/.next/
 frontend/out/
+frontend/build/
+
+# Testing
+coverage/
 frontend/coverage/
-frontend/tmp/
-frontend/tmp-demo-upload.pdf
-frontend/*.log
-frontend/*.tsbuildinfo
 
 # OS / editor
 .DS_Store
 Thumbs.db
-*.exe
-*.exe~
+.vscode/
+.idea/
 *.log
+
+# Storage
 backend/uploads/**
 !backend/uploads/.gitkeep
+backend/exports/**
+!backend/exports/.gitkeep
