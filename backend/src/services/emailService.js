@@ -1,10 +1,14 @@
 const nodemailer = require('nodemailer');
-require('dotenv').config({ override: true });
+require('dotenv').config();
 
-const cleanEnv = (value) => String(value || '').replace(/"/g, '').trim();
+const cleanEnv = (value) => {
+  if (!value) return '';
+  return String(value).replace(/["']/g, '').trim();
+};
+
 const parsePort = (value, fallback) => {
-  const parsed = Number.parseInt(String(value || ''), 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  const parsed = parseInt(String(value || ''), 10);
+  return isNaN(parsed) ? fallback : parsed;
 };
 
 const getSmtpConfig = () => {
@@ -12,44 +16,38 @@ const getSmtpConfig = () => {
   const port = parsePort(process.env.SMTP_PORT, 587);
   const user = cleanEnv(process.env.SMTP_USER);
   const pass = cleanEnv(process.env.SMTP_PASS);
-  const from = cleanEnv(process.env.SMTP_FROM);
+  const from = cleanEnv(process.env.SMTP_FROM) || `ReceiptMind <${user}>`;
 
-  return {
-    host,
-    port,
-    user,
-    pass,
-    from,
-    isGmail: /gmail\.com$/i.test(host) || /gmail\.com$/i.test(user),
-  };
+  return { host, port, user, pass, from };
 };
 
 const createTransporter = () => {
-  const smtp = getSmtpConfig();
+  const config = getSmtpConfig();
 
-  if (!smtp.host || !smtp.from || !smtp.user || !smtp.pass) {
-    throw new Error('SMTP is not fully configured');
-  }
-
-  if (smtp.isGmail) {
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: smtp.user,
-        pass: smtp.pass,
-      },
+  if (!config.host || !config.user || !config.pass) {
+    console.error('Email configuration missing:', { 
+      host: !!config.host, 
+      user: !!config.user, 
+      pass: !!config.pass 
     });
+    throw new Error('Email service is not configured. Please check SMTP environment variables.');
   }
 
-  return nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: smtp.port === 465,
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.port === 465,
     auth: {
-      user: smtp.user,
-      pass: smtp.pass,
+      user: config.user,
+      pass: config.pass,
     },
+    tls: {
+      // Do not fail on invalid certs
+      rejectUnauthorized: false
+    }
   });
+
+  return transporter;
 };
 
 const getEmailTemplate = (title, message, url, buttonText) => {
@@ -94,22 +92,25 @@ const getEmailTemplate = (title, message, url, buttonText) => {
 };
 
 const sendEmail = async (to, subject, html) => {
-  const smtp = getSmtpConfig();
+  const config = getSmtpConfig();
   const transporter = createTransporter();
 
-  const mailOptions = {
-    from: smtp.from,
-    to,
-    subject,
-    html,
-  };
-
   try {
+    // Verify connection configuration
+    await transporter.verify();
+    
+    const mailOptions = {
+      from: config.from,
+      to,
+      subject,
+      html,
+    };
+
     const info = await transporter.sendMail(mailOptions);
-    console.log('Email sent: ' + info.response);
+    console.log('Email sent successfully:', info.messageId);
     return info;
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error('Email service error:', error.message);
     throw error;
   }
 };
@@ -145,3 +146,4 @@ module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
 };
+
