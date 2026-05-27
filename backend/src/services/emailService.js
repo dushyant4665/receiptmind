@@ -25,36 +25,42 @@ const createTransporter = () => {
   const config = getSmtpConfig();
 
   if (!config.host || !config.user || !config.pass) {
-    console.error('Email configuration missing:', { 
-      host: !!config.host, 
-      user: !!config.user, 
-      pass: !!config.pass 
-    });
     throw new Error('Email service is not configured. Please check SMTP environment variables.');
   }
 
   const isGmail = config.host.includes('gmail.com');
   
-  const transportOptions = isGmail ? {
-    service: 'gmail',
+  const transportOptions = {
+    host: isGmail ? 'smtp.gmail.com' : config.host,
+    port: isGmail ? 465 : config.port,
+    secure: isGmail ? true : config.port === 465,
     auth: {
       user: config.user,
       pass: config.pass,
     },
-  } : {
-    host: config.host,
-    port: config.port,
-    secure: config.port === 465,
-    auth: {
-      user: config.user,
-      pass: config.pass,
-    },
+    // Production stability improvements to prevent timeouts
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
+    connectionTimeout: 20000, // 20 seconds
+    greetingTimeout: 20000,   // 20 seconds
+    socketTimeout: 60000,     // 60 seconds
     tls: {
-      rejectUnauthorized: false
+      rejectUnauthorized: false,
+      minVersion: 'TLSv1.2'
     }
   };
 
   return nodemailer.createTransport(transportOptions);
+};
+
+// Singleton transporter for pooling efficiency
+let transporterInstance = null;
+const getTransporter = () => {
+  if (!transporterInstance) {
+    transporterInstance = createTransporter();
+  }
+  return transporterInstance;
 };
 
 const getEmailTemplate = (title, message, url, buttonText) => {
@@ -100,7 +106,7 @@ const getEmailTemplate = (title, message, url, buttonText) => {
 
 const sendEmail = async (to, subject, html) => {
   const config = getSmtpConfig();
-  const transporter = createTransporter();
+  const transporter = getTransporter();
 
   try {
     const mailOptions = {
@@ -115,8 +121,9 @@ const sendEmail = async (to, subject, html) => {
     return info;
   } catch (error) {
     console.error('Email service error:', error.message);
-    if (error.code === 'EAUTH') {
-      console.error('SMTP Authentication failed. Check user/password (App Password might be required for Gmail).');
+    // Reset transporter on connection errors to force fresh connection next time
+    if (error.code === 'ECONNECTION' || error.code === 'ETIMEDOUT' || error.message.includes('timeout')) {
+      transporterInstance = null;
     }
     throw error;
   }
@@ -153,5 +160,3 @@ module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
 };
-
-
