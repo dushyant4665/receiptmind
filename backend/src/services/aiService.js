@@ -1,13 +1,8 @@
 require('dotenv').config({ override: true });
 const ocrService = require('./ocrService');
-const {
-  cleanText,
-  normalizeMoney,
-  normalizeConfidence,
-  normalizeDate,
-} = require('./validationService');
 
 const DEFAULT_CATEGORY = 'General';
+const OCR_TEXT_LIMIT = 3000;
 const GEMINI_MODEL_CANDIDATES = [
   process.env.GEMINI_MODEL,
   process.env.GEMINI_FALLBACK_MODEL,
@@ -34,6 +29,7 @@ const extractWithContext = async (fileBuffer, mimeType = 'image/jpeg') => {
   }
 
   const base64File = toBase64(fileBuffer);
+  const ocrText = await ocrService.extractText(fileBuffer, mimeType);
   let lastError = null;
 
   // Try OpenRouter models
@@ -41,7 +37,7 @@ const extractWithContext = async (fileBuffer, mimeType = 'image/jpeg') => {
     for (const modelName of OPENROUTER_MODEL_CANDIDATES) {
       try {
         console.log(`Trying OpenRouter with ${modelName}...`);
-        const result = await extractWithOpenRouter(openRouterKey, modelName, base64File, mimeType);
+        const result = await extractWithOpenRouter(openRouterKey, modelName, base64File, mimeType, ocrText);
         return finalizeExtraction(result, 'openrouter', modelName);
       } catch (error) {
         console.warn(`OpenRouter ${modelName} failed: ${error.message}`);
@@ -55,7 +51,7 @@ const extractWithContext = async (fileBuffer, mimeType = 'image/jpeg') => {
     for (const modelName of GEMINI_MODEL_CANDIDATES) {
       try {
         console.log(`Trying Gemini with ${modelName}...`);
-        const result = await extractWithGemini(geminiKey, modelName, base64File, mimeType);
+        const result = await extractWithGemini(geminiKey, modelName, base64File, mimeType, ocrText);
         return finalizeExtraction(result, 'gemini', modelName);
       } catch (error) {
         console.warn(`Gemini ${modelName} failed: ${error.message}`);
@@ -65,16 +61,15 @@ const extractWithContext = async (fileBuffer, mimeType = 'image/jpeg') => {
   }
 
   // Fallback to Tesseract OCR if AI fails
-  const ocrText = await ocrService.extractText(fileBuffer, mimeType);
   if (ocrText) {
-    console.warn('Falling back to basic OCR extraction.');
+    console.warn('Falling back to OCR-assisted heuristic extraction.');
     return finalizeExtraction(extractHeuristically(ocrText), 'tesseract', 'ocr-fallback', ocrText);
   }
 
   throw lastError || new Error('All extraction attempts failed');
 };
 
-const extractWithOpenRouter = async (apiKey, modelName, base64File, mimeType) => {
+const extractWithOpenRouter = async (apiKey, modelName, base64File, mimeType, ocrText = '') => {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -89,7 +84,7 @@ const extractWithOpenRouter = async (apiKey, modelName, base64File, mimeType) =>
         {
           role: 'user',
           content: [
-            { type: 'text', text: buildPrompt(mimeType) },
+            { type: 'text', text: buildPrompt(mimeType, ocrText) },
             ...(mimeType === 'application/pdf'
               ? []
               : [{ type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64File}` } }]),
@@ -102,7 +97,7 @@ const extractWithOpenRouter = async (apiKey, modelName, base64File, mimeType) =>
   });
 
   if (!response.ok) {
-    throw new Error(`OpenRouter API error: ${response.status}`);
+    throw new Error(await buildProviderError('OpenRouter API error', response));
   }
 
   const data = await response.json();
@@ -112,9 +107,9 @@ const extractWithOpenRouter = async (apiKey, modelName, base64File, mimeType) =>
   return parseJson(content);
 };
 
-const extractWithGemini = async (apiKey, modelName, base64File, mimeType) => {
+const extractWithGemini = async (apiKey, modelName, base64File, mimeType, ocrText = '') => {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-  const parts = [{ text: buildPrompt(mimeType) }];
+  const parts = [{ text: buildPrompt(mimeType, ocrText) }];
 
   if (mimeType !== 'application/pdf') {
     parts.push({ inlineData: { mimeType, data: base64File } });
@@ -130,7 +125,7 @@ const extractWithGemini = async (apiKey, modelName, base64File, mimeType) => {
   });
 
   if (!response.ok) {
-    throw new Error(`Gemini API error: ${response.status}`);
+    throw new Error(await buildProviderError('Gemini API error', response));
   }
 
   const data = await response.json();
@@ -140,9 +135,49 @@ const extractWithGemini = async (apiKey, modelName, base64File, mimeType) => {
   return parseJson(content);
 };
 
-const buildPrompt = (mimeType) => `Extract these fields from the receipt:
-- invoice_number, invoice_date, vendor_name, vendor_gstin, buyer_name, amount, subtotal, tax_amount, currency, category, confidence (0-1).
-Return only JSON. Document: ${mimeType}`;
+const buildPrompt = (mimeType, ocrText = '') => {
+  const ocrSection = ocrText
+    ? `\nOCR text extracted from the document (may contain noise, use only if helpful):\n${ocrText.slice(0, OCR_TEXT_LIMIT)}\n`
+    : '';
+
+  return `You are extracting structured expense data from a receipt or invoice.
+Return only one valid JSON object with these fields:
+{
+  "invoice_number": string,
+  "invoice_date": string,
+  "vendor_name": string,
+  "vendor_gstin": string,
+  "buyer_name": string,
+  "amount": number,
+  "subtotal": number,
+  "tax_amount": number,
+  "currency": string,
+  "category": string,
+  "confidence": number
+}
+
+Rules:
+- Prefer the merchant or store name at the top as vendor_name.
+- Prefer the final payable total for amount.
+- invoice_date should be the bill or receipt date.
+- confidence must be between 0 and 1.
+- If a field is missing, use empty string for text fields and 0 for numeric fields.
+- Do not wrap JSON in markdown.
+- Document mime type: ${mimeType}.${ocrSection}`;
+};
+
+const buildProviderError = async (prefix, response) => {
+  let detail = '';
+
+  try {
+    const text = await response.text();
+    detail = text ? ` ${text.slice(0, 300)}` : '';
+  } catch (error) {
+    detail = '';
+  }
+
+  return `${prefix}: ${response.status}${detail}`;
+};
 
 const normalizeExtractedNumber = (value) => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -237,12 +272,30 @@ const inferCurrency = (text) => {
   if (/eur|€/i.test(text)) return 'EUR';
   return 'USD';
 };
+
+const pickBestTax = (text) => {
+  const match = String(text || '').match(/(?:tax|vat|gst)\s*[:\-]?\s*(?:rs\.?|inr|\$)?\s*([0-9][0-9,]*\.?[0-9]{0,2})/i);
+  return match ? normalizeExtractedNumber(match[1]) : 0;
+};
+
+const pickBestSubtotal = (text, total, tax) => {
+  const explicitMatch = String(text || '').match(/(?:subtotal|sub total|taxable amount)\s*[:\-]?\s*(?:rs\.?|inr|\$)?\s*([0-9][0-9,]*\.?[0-9]{0,2})/i);
+  if (explicitMatch) {
+    return normalizeExtractedNumber(explicitMatch[1]);
+  }
+  if (total > 0 && tax > 0 && total >= tax) {
+    return normalizeExtractedNumber(total - tax);
+  }
+  return total;
+};
   
 /**
  * Basic heuristic extraction using regex when AI fails.
  */
 const extractHeuristically = (text) => {
   const amount = pickBestAmount(text);
+  const taxAmount = pickBestTax(text);
+  const subtotal = pickBestSubtotal(text, amount, taxAmount);
   const invoiceNumber =
     text.match(/(?:inv|bill|invoice)\s*(?:no|#|number)?\s*[:\-]?\s*([A-Z0-9-]{3,})/i)?.[1] ||
     '';
@@ -265,8 +318,8 @@ const extractHeuristically = (text) => {
     vendor_gstin: '',
     buyer_name: '',
     amount: amount,
-    subtotal: amount,
-    tax_amount: 0,
+    subtotal,
+    tax_amount: taxAmount,
     currency,
     category: DEFAULT_CATEGORY,
     confidence,
