@@ -3,13 +3,16 @@ const path = require('path');
 const fs = require('fs');
 const { errorResponse } = require('../utils/response');
 
+const storageRoot = path.resolve(process.env.STORAGE_PATH || './uploads');
+const resolveStoredFilePath = (storedPath) => path.resolve(storageRoot, storedPath);
+
 const getFile = async (req, res) => {
   const { id } = req.params;
   const { organizationId } = req.user;
 
   try {
     const { rows } = await db.query(
-      'SELECT file_path, content_type FROM storage_objects WHERE receipt_id = $1 AND organization_id = $2',
+      'SELECT path, content_type FROM storage_objects WHERE receipt_id = $1 AND organization_id = $2 AND deleted_at IS NULL',
       [id, organizationId]
     );
 
@@ -24,14 +27,14 @@ const getFile = async (req, res) => {
         return res.status(404).json(errorResponse('File not found'));
       }
       
-      const filePath = path.resolve(process.env.STORAGE_PATH || './uploads', receiptRows[0].file_path);
+      const filePath = resolveStoredFilePath(receiptRows[0].file_path);
       if (!fs.existsSync(filePath)) {
         return res.status(404).json(errorResponse('File not found on disk'));
       }
       return res.sendFile(filePath);
     }
 
-    const filePath = path.resolve(process.env.STORAGE_PATH || './uploads', rows[0].file_path);
+    const filePath = resolveStoredFilePath(rows[0].path);
     if (!fs.existsSync(filePath)) {
       return res.status(404).json(errorResponse('File not found on disk'));
     }
