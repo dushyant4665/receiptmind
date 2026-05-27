@@ -16,7 +16,7 @@ const getSmtpConfig = () => {
   const port = parsePort(process.env.SMTP_PORT, 587);
   const user = cleanEnv(process.env.SMTP_USER);
   const pass = cleanEnv(process.env.SMTP_PASS);
-  const from = cleanEnv(process.env.SMTP_FROM) || `ReceiptMind <${user}>`;
+  const from = cleanEnv(process.env.SMTP_FROM) || user;
 
   return { host, port, user, pass, from };
 };
@@ -33,7 +33,15 @@ const createTransporter = () => {
     throw new Error('Email service is not configured. Please check SMTP environment variables.');
   }
 
-  const transporter = nodemailer.createTransport({
+  const isGmail = config.host.includes('gmail.com');
+  
+  const transportOptions = isGmail ? {
+    service: 'gmail',
+    auth: {
+      user: config.user,
+      pass: config.pass,
+    },
+  } : {
     host: config.host,
     port: config.port,
     secure: config.port === 465,
@@ -42,12 +50,11 @@ const createTransporter = () => {
       pass: config.pass,
     },
     tls: {
-      // Do not fail on invalid certs
       rejectUnauthorized: false
     }
-  });
+  };
 
-  return transporter;
+  return nodemailer.createTransport(transportOptions);
 };
 
 const getEmailTemplate = (title, message, url, buttonText) => {
@@ -96,11 +103,8 @@ const sendEmail = async (to, subject, html) => {
   const transporter = createTransporter();
 
   try {
-    // Verify connection configuration
-    await transporter.verify();
-    
     const mailOptions = {
-      from: config.from,
+      from: config.from.includes('<') ? config.from : `ReceiptMind <${config.from}>`,
       to,
       subject,
       html,
@@ -111,6 +115,9 @@ const sendEmail = async (to, subject, html) => {
     return info;
   } catch (error) {
     console.error('Email service error:', error.message);
+    if (error.code === 'EAUTH') {
+      console.error('SMTP Authentication failed. Check user/password (App Password might be required for Gmail).');
+    }
     throw error;
   }
 };
@@ -146,4 +153,5 @@ module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
 };
+
 
