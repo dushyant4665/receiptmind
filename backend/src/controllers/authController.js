@@ -8,6 +8,24 @@ const { successResponse, errorResponse } = require('../utils/response');
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const hashToken = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const createExpiry = (hours) => new Date(Date.now() + hours * 60 * 60 * 1000);
+const isProduction = () => process.env.NODE_ENV === 'production';
+
+const sendEmailWithFallback = async (sendFn, successMessage, fallbackMessage) => {
+  try {
+    await sendFn();
+    return {
+      emailSent: true,
+      message: successMessage,
+    };
+  } catch (error) {
+    console.error('Email delivery failed:', error);
+    return {
+      emailSent: false,
+      message: fallbackMessage,
+      error,
+    };
+  }
+};
 
 const register = async (req, res) => {
   let { email, password, organization_name } = req.body;
@@ -46,12 +64,20 @@ const register = async (req, res) => {
       [crypto.randomUUID(), email, passwordHash, organization_name, tokenHash, expiresAt]
     );
 
-    await emailService.sendVerificationEmail(email, token);
+    const emailResult = await sendEmailWithFallback(
+      () => emailService.sendVerificationEmail(email, token),
+      'Registration initiated. Please check your email to verify and complete your account setup.',
+      'Registration created, but verification email could not be sent right now. Please use resend verification later after mail setup is fixed.'
+    );
 
     res.json(successResponse({
-      message: 'Registration initiated. Please check your email to verify and complete your account setup.',
+      message: emailResult.message,
       email,
-      data: { email }
+      data: {
+        email,
+        email_sent: emailResult.emailSent,
+        ...(emailResult.emailSent || isProduction() ? {} : { verification_token: token }),
+      }
     }));
   } catch (error) {
     console.error('Registration error:', error);
@@ -241,9 +267,16 @@ const forgotPassword = async (req, res) => {
       [crypto.randomUUID(), user.id, tokenHash, expiresAt]
     );
 
-    await emailService.sendPasswordResetEmail(normalizedEmail, token);
+    const emailResult = await sendEmailWithFallback(
+      () => emailService.sendPasswordResetEmail(normalizedEmail, token),
+      'If this email exists, a reset link was sent.',
+      'Password reset request was created, but the email could not be sent right now.'
+    );
 
-    res.json(successResponse({ message: 'If this email exists, a reset link was sent.' }));
+    res.json(successResponse({
+      message: emailResult.message,
+      ...(emailResult.emailSent || isProduction() ? {} : { data: { email_sent: false, reset_token: token } }),
+    }));
   } catch (error) {
     console.error('Forgot password error:', error);
     res.status(500).json(errorResponse('Internal server error'));
@@ -347,9 +380,20 @@ const resendVerification = async (req, res) => {
       [tokenHash, expiresAt, email]
     );
 
-    await emailService.sendVerificationEmail(email, token);
+    const emailResult = await sendEmailWithFallback(
+      () => emailService.sendVerificationEmail(email, token),
+      'Verification email resent. Please check your inbox.',
+      'Verification token refreshed, but the email could not be sent right now.'
+    );
 
-    res.json(successResponse({ message: 'Verification email resent. Please check your inbox.' }));
+    res.json(successResponse({
+      message: emailResult.message,
+      data: {
+        email,
+        email_sent: emailResult.emailSent,
+        ...(emailResult.emailSent || isProduction() ? {} : { verification_token: token }),
+      },
+    }));
   } catch (error) {
     console.error('Resend verification error:', error);
     res.status(500).json(errorResponse('Internal server error'));

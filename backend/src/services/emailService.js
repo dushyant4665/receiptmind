@@ -2,16 +2,55 @@ const nodemailer = require('nodemailer');
 require('dotenv').config({ override: true });
 
 const cleanEnv = (value) => String(value || '').replace(/"/g, '').trim();
+const parsePort = (value, fallback) => {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
-  secure: process.env.SMTP_PORT == 465,
-  auth: {
-    user: cleanEnv(process.env.SMTP_USER),
-    pass: cleanEnv(process.env.SMTP_PASS),
-  },
-});
+const getSmtpConfig = () => {
+  const host = cleanEnv(process.env.SMTP_HOST);
+  const port = parsePort(process.env.SMTP_PORT, 587);
+  const user = cleanEnv(process.env.SMTP_USER);
+  const pass = cleanEnv(process.env.SMTP_PASS);
+  const from = cleanEnv(process.env.SMTP_FROM);
+
+  return {
+    host,
+    port,
+    user,
+    pass,
+    from,
+    isGmail: /gmail\.com$/i.test(host) || /gmail\.com$/i.test(user),
+  };
+};
+
+const createTransporter = () => {
+  const smtp = getSmtpConfig();
+
+  if (!smtp.host || !smtp.from || !smtp.user || !smtp.pass) {
+    throw new Error('SMTP is not fully configured');
+  }
+
+  if (smtp.isGmail) {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: smtp.user,
+        pass: smtp.pass,
+      },
+    });
+  }
+
+  return nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.port === 465,
+    auth: {
+      user: smtp.user,
+      pass: smtp.pass,
+    },
+  });
+};
 
 const getEmailTemplate = (title, message, url, buttonText) => {
   return `
@@ -55,12 +94,11 @@ const getEmailTemplate = (title, message, url, buttonText) => {
 };
 
 const sendEmail = async (to, subject, html) => {
-  if (!process.env.SMTP_HOST || !process.env.SMTP_FROM) {
-    throw new Error('SMTP is not configured');
-  }
+  const smtp = getSmtpConfig();
+  const transporter = createTransporter();
 
   const mailOptions = {
-    from: process.env.SMTP_FROM,
+    from: smtp.from,
     to,
     subject,
     html,
