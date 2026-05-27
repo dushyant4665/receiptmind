@@ -24,7 +24,7 @@ export function useCsvExport() {
       if (params.status) searchParams.set("status", params.status);
 
       const query = searchParams.toString();
-      const url = `${API_URL}/receipts/export/csv${query ? `?${query}` : ""}`;
+      const url = `${API_URL}/exports/csv${query ? `?${query}` : ""}`;
 
       const response = await fetch(url, {
         headers: {
@@ -33,7 +33,8 @@ export function useCsvExport() {
       });
 
       if (!response.ok) {
-        throw new Error("CSV export failed");
+        const message = await response.text().catch(() => "");
+        throw new Error(message || "CSV export failed");
       }
 
       const blob = await response.blob();
