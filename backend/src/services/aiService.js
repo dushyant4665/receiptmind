@@ -144,6 +144,13 @@ const buildPrompt = (mimeType) => `Extract these fields from the receipt:
 - invoice_number, invoice_date, vendor_name, vendor_gstin, buyer_name, amount, subtotal, tax_amount, currency, category, confidence (0-1).
 Return only JSON. Document: ${mimeType}`;
 
+const normalizeExtractedNumber = (value) => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const cleaned = String(value || '').replace(/[^\d.-]/g, '');
+  const parsed = Number.parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 const parseJson = (content) => {
   const clean = content.replace(/```json|```/gi, '').trim();
   try {
@@ -154,12 +161,12 @@ const parseJson = (content) => {
       vendor_name: String(raw.vendor_name || raw.merchant_name || ''),
       vendor_gstin: String(raw.vendor_gstin || ''),
       buyer_name: String(raw.buyer_name || ''),
-      amount: Number(raw.amount || raw.total || 0),
-      subtotal: Number(raw.subtotal || 0),
-      tax_amount: Number(raw.tax_amount || raw.tax || 0),
+      amount: normalizeExtractedNumber(raw.amount || raw.total || 0),
+      subtotal: normalizeExtractedNumber(raw.subtotal || 0),
+      tax_amount: normalizeExtractedNumber(raw.tax_amount || raw.tax || 0),
       currency: String(raw.currency || 'USD'),
       category: String(raw.category || ''),
-      confidence: Number(raw.confidence || 0),
+      confidence: normalizeExtractedNumber(raw.confidence || 0),
     };
   } catch (e) {
     throw new Error('Failed to parse AI JSON response');
@@ -178,25 +185,91 @@ const finalizeExtraction = (result, provider, model, rawText = '') => {
 
 const toBase64 = (buffer) => Buffer.isBuffer(buffer) ? buffer.toString('base64') : buffer;
 
+const OCR_VENDOR_STOP_WORDS = new Set([
+  'tax invoice',
+  'invoice',
+  'receipt',
+  'bill',
+  'cash memo',
+  'simplified tax invoice',
+]);
+
+const pickVendorName = (text) => {
+  const lines = String(text || '')
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  for (const line of lines.slice(0, 8)) {
+    const normalized = line.toLowerCase();
+    if (normalized.length < 3 || normalized.length > 60) continue;
+    if (/\d{3,}/.test(normalized)) continue;
+    if (OCR_VENDOR_STOP_WORDS.has(normalized)) continue;
+    if (/gst|phone|table|server|order|token|time|date|total|amount|qty/i.test(line)) continue;
+    return line;
+  }
+
+  return lines[0] || '';
+};
+
+const pickBestAmount = (text) => {
+  const amountMatches = [...String(text || '').matchAll(/(?:grand total|total amount|net amount|amount due|amount|total)\s*[:\-]?\s*(?:rs\.?|inr|\$)?\s*([0-9][0-9,]*\.?[0-9]{0,2})/gi)];
+  if (amountMatches.length > 0) {
+    return normalizeExtractedNumber(amountMatches[amountMatches.length - 1][1]);
+  }
+
+  const fallbackMatches = [...String(text || '').matchAll(/(?:rs\.?|inr|\$)\s*([0-9][0-9,]*\.?[0-9]{0,2})/gi)];
+  if (fallbackMatches.length > 0) {
+    return Math.max(...fallbackMatches.map((match) => normalizeExtractedNumber(match[1])));
+  }
+
+  return 0;
+};
+
+const pickBestDate = (text) => {
+  const matches = String(text || '').match(/\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2})\b/g);
+  return matches?.[0] || '';
+};
+
+const inferCurrency = (text) => {
+  if (/\b(?:rs\.?|inr)\b/i.test(text)) return 'INR';
+  if (/\$|usd/i.test(text)) return 'USD';
+  if (/eur|€/i.test(text)) return 'EUR';
+  return 'USD';
+};
+  
 /**
  * Basic heuristic extraction using regex when AI fails.
  */
 const extractHeuristically = (text) => {
-  const amount = Number((text.match(/(?:total|amount|due)[:\s]*\$?\s*([0-9,.]+(?:\.[0-9]{2})?)/i)?.[1] || '0').replace(/,/g, ''));
-  const dateMatch = text.match(/\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/);
+  const amount = pickBestAmount(text);
+  const invoiceNumber =
+    text.match(/(?:inv|bill|invoice)\s*(?:no|#|number)?\s*[:\-]?\s*([A-Z0-9-]{3,})/i)?.[1] ||
+    '';
+  const invoiceDate = pickBestDate(text);
+  const vendorName = pickVendorName(text);
+  const currency = inferCurrency(text);
+  const confidenceSignals = [
+    Boolean(vendorName),
+    amount > 0,
+    Boolean(invoiceDate),
+    Boolean(invoiceNumber),
+    String(text || '').trim().length > 40,
+  ].filter(Boolean).length;
+  const confidence = confidenceSignals >= 4 ? 0.82 : confidenceSignals === 3 ? 0.72 : confidenceSignals === 2 ? 0.56 : 0.34;
   
   return {
-    invoice_number: text.match(/(?:inv|bill|invoice)\s*(?:no|#)?\s*([A-Z0-9-]+)/i)?.[1] || '',
-    invoice_date: dateMatch ? dateMatch[0] : '',
-    vendor_name: text.split('\n')[0].trim().substring(0, 50),
+    invoice_number: invoiceNumber,
+    invoice_date: invoiceDate,
+    vendor_name: vendorName,
     vendor_gstin: '',
     buyer_name: '',
     amount: amount,
     subtotal: amount,
     tax_amount: 0,
-    currency: text.includes('$') ? 'USD' : 'INR',
+    currency,
     category: DEFAULT_CATEGORY,
-    confidence: 0.5,
+    confidence,
   };
 };
 

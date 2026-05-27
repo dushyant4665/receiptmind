@@ -109,9 +109,17 @@ const validateExtraction = (extraction) => {
     const hasVendor = !!sanitized.vendor_name;
     const hasAmount = sanitized.amount > 0;
     const hasDate = !!sanitized.receipt_date;
+    const hasInvoiceNumber = !!sanitized.invoice_number;
+    const hasRawText = sanitized.raw_text.length > 40;
     
-    const score = [hasVendor, hasAmount, hasDate].filter(Boolean).length;
-    sanitized.confidence = score === 3 ? 0.9 : score === 2 ? 0.76 : score === 1 ? 0.58 : 0.2;
+    const score = [hasVendor, hasAmount, hasDate, hasInvoiceNumber, hasRawText].filter(Boolean).length;
+    sanitized.confidence =
+      score >= 5 ? 0.92 :
+      score === 4 ? 0.84 :
+      score === 3 ? 0.74 :
+      score === 2 ? 0.58 :
+      score === 1 ? 0.38 :
+      0.2;
   }
 
   const missingFields = [];
