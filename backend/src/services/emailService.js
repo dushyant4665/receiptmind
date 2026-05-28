@@ -1,5 +1,10 @@
 const nodemailer = require('nodemailer');
+const dns = require('dns');
 require('dotenv').config();
+
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+}
 
 const cleanEnv = (value) => {
   if (!value) return '';
@@ -11,54 +16,87 @@ const parsePort = (value, fallback) => {
   return isNaN(parsed) ? fallback : parsed;
 };
 
+const parseBoolean = (value) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+};
+
+const normalizeHost = (value) => {
+  const host = cleanEnv(value);
+  if (!host) return '';
+
+  return host
+    .replace(/^smtps?:\/\//i, '')
+    .replace(/:\d+$/, '');
+};
+
 const getSmtpConfig = () => {
-  const host = cleanEnv(process.env.SMTP_HOST);
+  const host = normalizeHost(process.env.SMTP_HOST);
   const port = parsePort(process.env.SMTP_PORT, 587);
   const user = cleanEnv(process.env.SMTP_USER);
   const pass = cleanEnv(process.env.SMTP_PASS);
   const from = cleanEnv(process.env.SMTP_FROM) || user;
+  const secure = parseBoolean(process.env.SMTP_SECURE);
 
-  return { host, port, user, pass, from };
+  return { host, port, user, pass, from, secure };
 };
 
-const createTransporter = () => {
+const buildTransportOptions = (config, overrides = {}) => {
+  const isGmail = config.host.includes('gmail.com');
+  const port = overrides.port ?? config.port;
+
+  return {
+    host: overrides.host || (isGmail ? 'smtp.gmail.com' : config.host),
+    port,
+    secure: overrides.secure ?? config.secure ?? (isGmail ? port === 465 : port === 465),
+    auth: {
+      user: config.user,
+      pass: config.pass,
+    },
+    family: 4,
+    pool: false,
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
+    tls: {
+      rejectUnauthorized: false,
+      minVersion: 'TLSv1.2',
+    },
+  };
+};
+
+const createTransporters = () => {
   const config = getSmtpConfig();
 
   if (!config.host || !config.user || !config.pass) {
     throw new Error('Email service is not configured. Please check SMTP environment variables.');
   }
 
-  const isGmail = config.host.includes('gmail.com');
-  
-  const transportOptions = {
-    host: isGmail ? 'smtp.gmail.com' : config.host,
-    port: isGmail ? 465 : config.port,
-    secure: isGmail ? true : config.port === 465,
-    auth: {
-      user: config.user,
-      pass: config.pass,
-    },
-    // Production stability improvements to prevent timeouts
-    pool: true,
-    maxConnections: 5,
-    maxMessages: 100,
-    connectionTimeout: 20000, // 20 seconds
-    greetingTimeout: 20000,   // 20 seconds
-    socketTimeout: 60000,     // 60 seconds
-    tls: {
-      rejectUnauthorized: false,
-      minVersion: 'TLSv1.2'
-    }
-  };
+  const candidates = [];
 
-  return nodemailer.createTransport(transportOptions);
+  if (config.host.includes('gmail.com')) {
+    candidates.push(
+      buildTransportOptions(config, { host: 'smtp.gmail.com', port: 587, secure: false }),
+      buildTransportOptions(config, { host: 'smtp.gmail.com', port: 465, secure: true })
+    );
+  } else {
+    candidates.push(buildTransportOptions(config));
+    if (config.port === 587) {
+      candidates.push(buildTransportOptions(config, { secure: true, port: 465 }));
+    } else if (config.port === 465) {
+      candidates.push(buildTransportOptions(config, { secure: false, port: 587 }));
+    }
+  }
+
+  return candidates.map((options) => nodemailer.createTransport(options));
 };
+
 
 // Singleton transporter for pooling efficiency
 let transporterInstance = null;
 const getTransporter = () => {
   if (!transporterInstance) {
-    transporterInstance = createTransporter();
+    transporterInstance = createTransporters();
   }
   return transporterInstance;
 };
@@ -106,7 +144,7 @@ const getEmailTemplate = (title, message, url, buttonText) => {
 
 const sendEmail = async (to, subject, html) => {
   const config = getSmtpConfig();
-  const transporter = getTransporter();
+  const transporters = getTransporter();
 
   try {
     const mailOptions = {
@@ -116,12 +154,22 @@ const sendEmail = async (to, subject, html) => {
       html,
     };
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Email sent successfully:', info.messageId);
-    return info;
+    let lastError = null;
+
+    for (const transporter of transporters) {
+      try {
+        const info = await transporter.sendMail(mailOptions);
+        console.log('Email sent successfully:', info.messageId);
+        return info;
+      } catch (error) {
+        lastError = error;
+        console.error(`Email service error (${transporter.options.host}:${transporter.options.port}):`, error.message);
+      }
+    }
+
+    throw lastError || new Error('Unable to send email with configured SMTP transports.');
   } catch (error) {
     console.error('Email service error:', error.message);
-    // Reset transporter on connection errors to force fresh connection next time
     if (error.code === 'ECONNECTION' || error.code === 'ETIMEDOUT' || error.message.includes('timeout')) {
       transporterInstance = null;
     }
