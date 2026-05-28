@@ -1,41 +1,41 @@
-import { BarChart3, Camera, GitBranch, Mail, ShieldCheck, Zap } from "lucide-react";
+import { AlertTriangle, BarChart3, Camera, FileDown, ShieldCheck, Zap } from "lucide-react";
 
 const features = [
   {
     icon: Camera,
     title: "AI-powered OCR",
     description:
-      "99.2% accuracy on receipts, invoices, and bills. Extract vendor, amount, date, category, and tax automatically.",
+      "Extract vendor, amount, date, category, and tax fields from receipts, invoices, PDFs, and photos.",
   },
   {
     icon: Zap,
-    title: "30-second processing",
+    title: "Fast processing",
     description:
-      "Upload a photo. Get structured data. Export instantly. No manual entry. No spreadsheet cleanup.",
+      "Move files from upload to structured expense records with clear status and confidence signals.",
   },
   {
-    icon: Mail,
-    title: "Gmail auto-fetch",
+    icon: AlertTriangle,
+    title: "Exception review",
     description:
-      "Connect inboxes and let ReceiptMind discover receipt emails, attachments, and forwarding aliases.",
+      "Flag low-confidence fields and missing details before they become export or reimbursement problems.",
   },
   {
     icon: ShieldCheck,
-    title: "Bank-grade security",
+    title: "Verified accounts",
     description:
-      "Encryption at rest and in transit, role-based access, and audit visibility built for finance ops.",
+      "Email verification and password reset flows keep accounts cleaner without adding friction to onboarding.",
   },
   {
-    icon: GitBranch,
-    title: "QuickBooks integration",
+    icon: FileDown,
+    title: "CSV exports",
     description:
-      "Map categories, vendors, and reimbursement fields to QuickBooks, Xero, and AP sync workflows.",
+      "Export normalized expense data for bookkeeping, reporting, and downstream finance cleanup.",
   },
   {
     icon: BarChart3,
     title: "Analytics dashboard",
     description:
-      "Track spend by vendor, policy drift, reimbursement velocity, and month-over-month category changes.",
+      "Track spend, receipt volume, review status, and recent activity from a clean dashboard surface.",
   },
 ];
 
@@ -48,10 +48,10 @@ export function FeaturesSection() {
             Capabilities
           </p>
           <h2 className="mt-5 font-heading text-[36px] leading-[1.12] tracking-[-0.2px] text-text-primary">
-            Everything finance needs, nothing finance hates.
+            Built around the work that actually happens.
           </h2>
           <p className="mt-3 text-[15px] leading-[1.65] text-text-muted">
-            Built for receipt-heavy teams that need clean data, fast review loops, and exports your accountant can trust.
+            ReceiptMind focuses on the practical loop: extraction, review, rules, exports, and visibility.
           </p>
         </div>
 

@@ -4,17 +4,17 @@ const steps = [
   {
     icon: UploadCloud,
     title: "Upload",
-    description: "Drag and drop any receipt photo or PDF. Bulk upload up to 20 files at once.",
+    description: "Add receipt photos, invoices, or PDFs from the dashboard upload flow.",
   },
   {
     icon: Cpu,
-    title: "AI processing",
-    description: "Our AI extracts vendor, amount, date, category, and policy hints with 99.2% accuracy.",
+    title: "Extract",
+    description: "AI reads the document and turns messy input into structured expense fields.",
   },
   {
     icon: Download,
-    title: "Download",
-    description: "Export clean CSV or Excel files, or send the structured data straight to your accounting stack.",
+    title: "Review and export",
+    description: "Resolve exceptions, apply rules, and download CSV output when the data is ready.",
   },
 ];
 
@@ -30,10 +30,10 @@ export function HowItWorks() {
             Workflow
           </p>
           <h2 className="mt-5 font-heading text-[36px] leading-[1.12] tracking-[-0.2px] text-text-primary">
-            Three simple steps
+            A simple operating loop
           </h2>
           <p className="mt-3 text-[15px] leading-[1.65] text-text-muted">
-            Designed for speed on mobile, clarity for finance, and exports your accountant can trust.
+            Designed for speed while keeping the review checkpoints visible.
           </p>
         </div>
 

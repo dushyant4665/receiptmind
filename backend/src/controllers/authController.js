@@ -395,7 +395,7 @@ const resendVerification = async (req, res) => {
       },
     }));
   } catch (error) {
-    console.error('Resend verification error:', error);
+    console.error('Verification resend error:', error);
     res.status(500).json(errorResponse('Internal server error'));
   }
 };

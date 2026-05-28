@@ -1,73 +1,56 @@
 # ReceiptMind Backend
 
-The backend is an Express service that handles authentication, receipt upload, AI extraction, rules, exception tracking, and CSV export.
+The backend is a small Express API that handles auth, receipt upload, extraction, rules, exceptions, file preview, CSV export, and email delivery.
 
-## Responsibilities
+## What It Does
 
-- Accept receipt uploads and persist files
-- Insert and update receipt processing jobs
-- Extract structured fields through AI providers
-- Normalize and validate extracted values
-- Apply rules and create review exceptions
-- Serve file previews and CSV exports
+- Accepts uploads and stores files on disk
+- Extracts fields through OpenRouter, Gemini, and Tesseract fallback
+- Validates, normalizes, and stores receipt data
+- Applies rules and creates exceptions
+- Serves receipt previews and CSV exports
+- Sends verification and reset emails through Brevo
 
-## Folder Layout
+## Structure
 
 ```text
 backend/
 |- src/
-|  |- config/       # database connectivity and shared config
-|  |- controllers/  # route handlers
-|  |- db/           # SQL setup and migrations
-|  |- middleware/   # auth and HTTP middleware
-|  |- routes/       # API modules
-|  |- services/     # business logic and provider integrations
-|  |- utils/        # shared helpers
+|  |- config/
+|  |- controllers/
+|  |- db/
+|  |- middleware/
+|  |- routes/
+|  |- services/
+|  |- utils/
 |  |- app.js
 |  `- index.js
-|- exports/
 |- uploads/
+|- exports/
 `- tests/
 ```
 
-## Request Lifecycle
+## Key Flow
 
 ```mermaid
 flowchart TD
-    A[HTTP Request] --> B[Route]
+    A[HTTP request] --> B[Route]
     B --> C[Controller]
-    C --> D[Service Layer]
+    C --> D[Service]
     D --> E[(PostgreSQL)]
-    D --> F[Storage]
-    D --> G[AI Providers]
+    D --> F[File storage]
+    D --> G[AI providers]
     G --> D
-    D --> H[Validation and Rules]
+    D --> H[Validation + rules]
     H --> C
-    C --> I[JSON Response]
+    C --> I[JSON response]
 ```
 
-## Extraction Pipeline
+## Environment
 
-```mermaid
-flowchart TD
-    U[Uploaded file] --> S[storageService]
-    S --> P[receiptProcessingService]
-    P --> O[OpenRouter]
-    O -->|fail| G[Gemini]
-    G -->|fail| T[Tesseract OCR]
-    O --> V[validationService]
-    G --> V
-    T --> V
-    V --> R[ruleService]
-    R --> X[exceptionService]
-    X --> D[(receipts and jobs tables)]
-```
+Base values are in [`.env.example`](./.env.example).
 
-## Environment Variables
-
-Base configuration is documented in [`.env.example`](./.env.example).
-
-Common production variables:
+Important variables:
 
 - `PORT`
 - `NODE_ENV`
@@ -82,33 +65,25 @@ Common production variables:
 - `STORAGE_PATH`
 - `BASE_URL`
 - `FRONTEND_URL`
+- `BREVO_API_KEY`
+- `BREVO_FROM`
 
-## Local Run
+## Run
 
 ```bash
 npm install
 npm run dev
 ```
 
-Health check:
+## Deploy on Render
 
-```bash
-curl http://localhost:3001/health
-```
-
-## Render Deployment
-
-Recommended Render settings:
-
-- Root Directory: `backend`
-- Build Command: `npm install && npm run build`
-- Start Command: `npm start`
-- Environment: `Node`
-
-`npm run build` is intentionally present even though the backend is not transpiled. This avoids Render build failures and keeps the deploy contract explicit.
+- Root directory: `backend`
+- Build command: `npm install && npm run build`
+- Start command: `npm start`
+- Node: 20+
 
 ## Notes
 
-- Local file storage is the current default. If you move to object storage later, `storageService` is the right integration boundary.
-- OCR fallback only runs for image uploads.
-- CSV exports are generated on the backend and stored in `exports/`.
+- `npm run build` is a no-op so Render has a stable build step.
+- Files stay on local disk by default.
+- Brevo keys stay on the backend only.

@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/common/logo";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
   { href: "/features", label: "Features" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/blog", label: "Blog" },
-  { href: "/changelog", label: "Changelog" },
+  { href: "/about", label: "About" },
+  { href: "/contact", label: "Contact" },
 ];
 
 export function Navbar() {
@@ -20,13 +21,8 @@ export function Navbar() {
     <>
       <header className="sticky top-0 z-50 h-14 border-b border-border-default bg-bg-surface">
         <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 md:px-8">
-          <Link href="/" className="flex items-center gap-2" aria-label="ReceiptMind home">
-            <span className="flex size-7 items-center justify-center rounded-[6px] bg-text-primary text-[11px] font-medium tracking-[1px] text-white">
-              RM
-            </span>
-            <span className="text-[15px] font-medium tracking-[-0.3px] text-text-primary">
-              ReceiptMind
-            </span>
+          <Link href="/" aria-label="ReceiptMind home">
+            <Logo />
           </Link>
 
           <nav className="hidden items-center gap-1 md:flex">
@@ -70,7 +66,7 @@ export function Navbar() {
         )}
         onClick={() => setOpen(false)}
       >
-        <div
+        <aside
           className={cn(
             "ml-auto flex h-full w-[288px] translate-x-full flex-col border-l border-border-default bg-bg-surface p-6 transition-[transform]",
             open && "translate-x-0",
@@ -78,24 +74,12 @@ export function Navbar() {
           onClick={(event) => event.stopPropagation()}
         >
           <div className="mb-6 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="flex size-7 items-center justify-center rounded-[6px] bg-text-primary text-[11px] font-medium tracking-[1px] text-white">
-                RM
-              </span>
-              <span className="text-[15px] font-medium tracking-[-0.3px] text-text-primary">
-                ReceiptMind
-              </span>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Close navigation"
-              onClick={() => setOpen(false)}
-            >
+            <Logo />
+            <Button type="button" variant="ghost" size="icon" aria-label="Close navigation" onClick={() => setOpen(false)}>
               <X />
             </Button>
           </div>
+
           <nav className="grid gap-1">
             {navLinks.map((link) => (
               <Link
@@ -108,6 +92,7 @@ export function Navbar() {
               </Link>
             ))}
           </nav>
+
           <div className="mt-6 grid gap-2">
             <Button asChild variant="ghost">
               <Link href="/login" onClick={() => setOpen(false)}>
@@ -120,7 +105,7 @@ export function Navbar() {
               </Link>
             </Button>
           </div>
-        </div>
+        </aside>
       </div>
     </>
   );

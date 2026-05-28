@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Logo } from "@/components/common/logo";
 
 const footerColumns = [
   {
@@ -6,8 +7,7 @@ const footerColumns = [
     links: [
       { href: "/features", label: "Features" },
       { href: "/pricing", label: "Pricing" },
-      { href: "/changelog", label: "Changelog" },
-      { href: "/security", label: "Security" },
+      { href: "/api-docs", label: "API Docs" },
     ],
   },
   {
@@ -23,13 +23,7 @@ const footerColumns = [
     links: [
       { href: "/privacy", label: "Privacy" },
       { href: "/terms", label: "Terms" },
-    ],
-  },
-  {
-    title: "Developers",
-    links: [
-      { href: "/api-docs", label: "API Docs" },
-      { href: "/features", label: "Integrations" },
+      { href: "/security", label: "Security" },
     ],
   },
 ];
@@ -38,16 +32,9 @@ export function Footer() {
   return (
     <footer className="bg-bg-invert px-4 pb-8 pt-12 text-[#666662] md:px-8">
       <div className="mx-auto max-w-6xl">
-        <div className="grid gap-8 md:grid-cols-[1.2fr_repeat(4,1fr)]">
+        <div className="grid gap-8 md:grid-cols-[1.2fr_repeat(3,1fr)]">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="flex size-7 items-center justify-center rounded-[6px] bg-text-invert text-[11px] font-medium tracking-[1px] text-bg-invert">
-                RM
-              </span>
-              <span className="text-[15px] font-medium tracking-[-0.3px] text-text-invert">
-                ReceiptMind
-              </span>
-            </div>
+            <Logo light />
             <p className="mt-3 max-w-[220px] text-[13px] leading-[1.6] text-[#555552]">
               Calm finance software for receipt-heavy teams.
             </p>

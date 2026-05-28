@@ -1,6 +1,6 @@
 # ReceiptMind Frontend
 
-The frontend is a Next.js App Router application for upload, review, analytics, exceptions, and export workflows.
+The frontend is a Next.js App Router app for upload, review, rules, exceptions, and export workflows.
 
 ## Responsibilities
 
@@ -75,3 +75,6 @@ The frontend should treat the backend as the single source of truth for:
 - extraction output
 - export generation
 - exception lifecycle
+- auth email delivery
+
+Brevo or other mail provider secrets must stay on the backend. The frontend only needs backend URL variables such as `NEXT_PUBLIC_API_URL` and `BACKEND_API_URL`.

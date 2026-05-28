@@ -1,6 +1,5 @@
 const dns = require('dns');
 const https = require('https');
-const nodemailer = require('nodemailer');
 require('dotenv').config();
 
 if (dns.setDefaultResultOrder) {
@@ -9,72 +8,10 @@ if (dns.setDefaultResultOrder) {
 
 const cleanEnv = (value) => String(value || '').replace(/["']/g, '').trim();
 
-const parsePort = (value, fallback) => {
-  const parsed = Number.parseInt(String(value || ''), 10);
-  return Number.isNaN(parsed) ? fallback : parsed;
-};
-
-const parseBoolean = (value, fallback = false) => {
-  if (value === undefined || value === null || value === '') return fallback;
-  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
-};
-
 const getBrevoConfig = () => ({
   apiKey: cleanEnv(process.env.BREVO_API_KEY),
-  host: cleanEnv(process.env.BREVO_SMTP_HOST) || 'smtp-relay.brevo.com',
-  port: parsePort(process.env.BREVO_SMTP_PORT, 587),
-  user: cleanEnv(process.env.BREVO_SMTP_USER),
-  pass: cleanEnv(process.env.BREVO_SMTP_KEY),
-  from: cleanEnv(process.env.BREVO_FROM) || cleanEnv(process.env.SMTP_FROM),
-  secure: parseBoolean(process.env.BREVO_SMTP_SECURE, false),
+  from: cleanEnv(process.env.BREVO_FROM),
 });
-
-const buildTransporter = () => {
-  const config = getBrevoConfig();
-
-  if (!config.user || !config.pass) {
-    throw new Error('Brevo SMTP is not configured. Set BREVO_SMTP_USER and BREVO_SMTP_KEY.');
-  }
-
-  const secure = config.port === 465 ? true : config.secure;
-
-  return nodemailer.createTransport({
-    host: config.host,
-    port: config.port,
-    secure,
-    requireTLS: !secure,
-    auth: {
-      user: config.user,
-      pass: config.pass,
-    },
-    family: 4,
-    lookup: (hostname, options, callback) => {
-      dns.lookup(hostname, { ...options, family: 4, all: false }, callback);
-    },
-    connectionTimeout: 30000,
-    greetingTimeout: 15000,
-    socketTimeout: 30000,
-    pool: false,
-    tls: {
-      rejectUnauthorized: false,
-      minVersion: 'TLSv1.2',
-      servername: config.host,
-    },
-  });
-};
-
-let transporter;
-
-const getTransporter = () => {
-  if (!transporter) {
-    transporter = buildTransporter();
-  }
-  return transporter;
-};
-
-const resetTransporter = () => {
-  transporter = undefined;
-};
 
 const parseEmailAddress = (value) => {
   const cleaned = cleanEnv(value);
@@ -184,35 +121,25 @@ const getEmailTemplate = (title, message, url, buttonText) => `
 
 const sendEmail = async (to, subject, html) => {
   const config = getBrevoConfig();
-  const from = config.from || config.user;
 
-  if (!from) {
-    throw new Error('BREVO_FROM or SMTP_FROM is required.');
+  if (!config.apiKey) {
+    throw new Error('BREVO_API_KEY is required.');
   }
 
-  if (config.apiKey) {
-    const info = await sendWithBrevoApi({ to, subject, html, from, apiKey: config.apiKey });
-    console.log(`Email sent successfully via Brevo API: ${info.messageId}`);
-    return info;
+  if (!config.from) {
+    throw new Error('BREVO_FROM is required.');
   }
 
-  try {
-    const info = await getTransporter().sendMail({
-      from: from.includes('<') ? from : `ReceiptMind <${from}>`,
-      to,
-      subject,
-      html,
-    });
+  const info = await sendWithBrevoApi({
+    to,
+    subject,
+    html,
+    from: config.from,
+    apiKey: config.apiKey,
+  });
 
-    console.log(`Email sent successfully: ${info.messageId}`);
-    return info;
-  } catch (error) {
-    console.error('Email delivery failed:', error);
-    if (['ETIMEDOUT', 'ECONNECTION', 'ESOCKET'].includes(error.code) || /timeout/i.test(error.message || '')) {
-      resetTransporter();
-    }
-    throw error;
-  }
+  console.log(`Email sent successfully via Brevo API: ${info.messageId}`);
+  return info;
 };
 
 const sendVerificationEmail = async (email, token) => {
