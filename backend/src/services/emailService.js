@@ -1,159 +1,84 @@
-const nodemailer = require('nodemailer');
 const dns = require('dns');
+const nodemailer = require('nodemailer');
 require('dotenv').config();
 
 if (dns.setDefaultResultOrder) {
   dns.setDefaultResultOrder('ipv4first');
 }
 
-const cleanEnv = (value) => {
-  if (!value) return '';
-  return String(value).replace(/["']/g, '').trim();
-};
+const cleanEnv = (value) => String(value || '').replace(/["']/g, '').trim();
 
 const parsePort = (value, fallback) => {
-  const parsed = parseInt(String(value || ''), 10);
-  return isNaN(parsed) ? fallback : parsed;
+  const parsed = Number.parseInt(String(value || ''), 10);
+  return Number.isNaN(parsed) ? fallback : parsed;
 };
 
-const parseBoolean = (value) => {
-  if (value === undefined || value === null || value === '') return undefined;
+const parseBoolean = (value, fallback = false) => {
+  if (value === undefined || value === null || value === '') return fallback;
   return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
 };
 
-const isTruthy = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
-const resolve4 = dns.promises?.resolve4 ? dns.promises.resolve4.bind(dns.promises) : null;
-
-const normalizeHost = (value) => {
+const parseHost = (value) => {
   const host = cleanEnv(value);
   if (!host) return '';
-
-  return host
-    .replace(/^smtps?:\/\//i, '')
-    .replace(/:\d+$/, '');
+  return host.replace(/^smtps?:\/\//i, '').replace(/:\d+$/, '');
 };
 
-const getSmtpConfig = () => {
-  const host = normalizeHost(process.env.SMTP_HOST);
-  const port = parsePort(process.env.SMTP_PORT, 587);
-  const user = cleanEnv(process.env.SMTP_USER);
-  const pass = cleanEnv(process.env.SMTP_PASS);
-  const from = cleanEnv(process.env.SMTP_FROM) || user;
-  const secure = parseBoolean(process.env.SMTP_SECURE);
+const getSmtpConfig = () => ({
+  host: parseHost(process.env.SMTP_HOST),
+  port: parsePort(process.env.SMTP_PORT, 587),
+  user: cleanEnv(process.env.SMTP_USER),
+  pass: cleanEnv(process.env.SMTP_PASS),
+  from: cleanEnv(process.env.SMTP_FROM),
+  secure: parseBoolean(process.env.SMTP_SECURE, false),
+});
 
-  return { host, port, user, pass, from, secure };
-};
+const buildTransporter = () => {
+  const config = getSmtpConfig();
 
-const getMailProvider = () => {
-  const configured = cleanEnv(process.env.EMAIL_PROVIDER).toLowerCase();
-  if (configured) return configured;
-  if (cleanEnv(process.env.RESEND_API_KEY)) return 'resend';
-  return 'smtp';
-};
+  if (!config.host || !config.user || !config.pass) {
+    throw new Error('SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS.');
+  }
 
-const buildTransportOptions = (config, overrides = {}) => {
-  const isGmail = config.host.includes('gmail.com');
-  const port = overrides.port ?? config.port;
-  const host = overrides.host || (isGmail ? 'smtp.gmail.com' : config.host);
-  const secure = overrides.secure ?? config.secure ?? (isGmail ? port === 465 : port === 465);
+  const secure = config.port === 465 ? true : config.secure;
 
-  return {
-    host,
-    port,
+  return nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
     secure,
-    servername: overrides.servername || config.host,
     auth: {
       user: config.user,
       pass: config.pass,
     },
     family: 4,
-    lookup: (_, __, callback) => callback(null, host, 4),
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 30000,
+    lookup: (hostname, options, callback) => {
+      dns.lookup(hostname, { ...options, family: 4, all: false }, callback);
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000,
     tls: {
       rejectUnauthorized: false,
       minVersion: 'TLSv1.2',
+      servername: config.host,
     },
-  };
-};
-
-const resolveTransportHost = async (host) => {
-  if (!resolve4) return host;
-
-  try {
-    const addresses = await resolve4(host);
-    return addresses[0] || host;
-  } catch (error) {
-    console.error(`SMTP DNS lookup failed for ${host}:`, error.message);
-    return host;
-  }
-};
-
-const createTransporters = async () => {
-  const config = getSmtpConfig();
-
-  if (!config.host || !config.user || !config.pass) {
-    throw new Error('Email service is not configured. Please check SMTP environment variables.');
-  }
-
-  const candidates = [];
-  const resolvedHost = await resolveTransportHost(config.host);
-
-  if (config.host.includes('gmail.com')) {
-    candidates.push(
-      buildTransportOptions(config, { host: resolvedHost, servername: 'smtp.gmail.com', port: 587, secure: false }),
-      buildTransportOptions(config, { host: resolvedHost, servername: 'smtp.gmail.com', port: 465, secure: true })
-    );
-  } else {
-    candidates.push(buildTransportOptions(config, { host: resolvedHost }));
-    if (config.port === 587) {
-      candidates.push(buildTransportOptions(config, { host: resolvedHost, secure: true, port: 465 }));
-    } else if (config.port === 465) {
-      candidates.push(buildTransportOptions(config, { host: resolvedHost, secure: false, port: 587 }));
-    }
-  }
-
-  return candidates.map((options) => nodemailer.createTransport(options));
-};
-
-
-// Singleton transporter for pooling efficiency
-let transporterInstance = null;
-const getTransporter = async () => {
-  if (!transporterInstance) {
-    transporterInstance = await createTransporters();
-  }
-  return transporterInstance;
-};
-
-const sendViaResend = async (to, subject, html) => {
-  const apiKey = cleanEnv(process.env.RESEND_API_KEY);
-  const from = cleanEnv(process.env.SMTP_FROM) || cleanEnv(process.env.RESEND_FROM) || 'ReceiptMind <no-reply@receiptmind.com>';
-
-  if (!apiKey) {
-    throw new Error('RESEND_API_KEY is not configured.');
-  }
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ from, to, subject, html }),
   });
-
-  const body = await response.text();
-  if (!response.ok) {
-    throw new Error(`Resend API error (${response.status}): ${body}`);
-  }
-
-  return { messageId: `resend:${Date.now()}`, provider: 'resend', body };
 };
 
-const getEmailTemplate = (title, message, url, buttonText) => {
-  return `
+let transporter;
+
+const getTransporter = () => {
+  if (!transporter) {
+    transporter = buildTransporter();
+  }
+  return transporter;
+};
+
+const resetTransporter = () => {
+  transporter = undefined;
+};
+
+const getEmailTemplate = (title, message, url, buttonText) => `
 <!DOCTYPE html>
 <html>
 <head>
@@ -190,83 +115,62 @@ const getEmailTemplate = (title, message, url, buttonText) => {
   </div>
 </body>
 </html>
-  `;
-};
+`;
 
 const sendEmail = async (to, subject, html) => {
   const config = getSmtpConfig();
-  const provider = getMailProvider();
-
-  if (provider === 'resend') {
-    try {
-      const result = await sendViaResend(to, subject, html);
-      console.log('Email sent successfully via Resend');
-      return result;
-    } catch (error) {
-      console.error('Resend email error:', error.message);
-      if (!isTruthy(process.env.FALLBACK_TO_SMTP)) {
-        throw error;
-      }
-    }
-  }
-
-  const transporters = await getTransporter();
+  const from = config.from || config.user;
+  const transporter = getTransporter();
 
   try {
-    const mailOptions = {
-      from: config.from.includes('<') ? config.from : `ReceiptMind <${config.from}>`,
+    const info = await transporter.sendMail({
+      from: from.includes('<') ? from : `ReceiptMind <${from}>`,
       to,
       subject,
       html,
-    };
+    });
 
-    let lastError = null;
-
-    for (const transporter of transporters) {
-      try {
-        const info = await transporter.sendMail(mailOptions);
-        console.log('Email sent successfully:', info.messageId);
-        return info;
-      } catch (error) {
-        lastError = error;
-        console.error(`Email service error (${transporter.options.host}:${transporter.options.port}):`, error.message);
-      }
-    }
-
-    throw lastError || new Error('Unable to send email with configured SMTP transports.');
+    console.log(`Email sent successfully: ${info.messageId}`);
+    return info;
   } catch (error) {
-    console.error('Email service error:', error.message);
-    if (error.code === 'ECONNECTION' || error.code === 'ETIMEDOUT' || error.message.includes('timeout')) {
-      transporterInstance = null;
+    console.error('Email delivery failed:', error);
+    if (['ETIMEDOUT', 'ECONNECTION', 'ESOCKET'].includes(error.code) || /timeout/i.test(error.message || '')) {
+      resetTransporter();
     }
     throw error;
   }
 };
 
 const sendVerificationEmail = async (email, token) => {
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const frontendUrl = cleanEnv(process.env.FRONTEND_URL) || 'http://localhost:3000';
   const verificationUrl = `${frontendUrl}/verify-email?token=${token}`;
-  
-  const title = 'Welcome to ReceiptMind';
-  const message = 'Thank you for signing up! Please verify your email address to activate your account and start managing your receipts efficiently.';
-  const buttonText = 'Verify Email Address';
-  
-  const html = getEmailTemplate(title, message, verificationUrl, buttonText);
-  
-  return sendEmail(email, 'Verify your email - ReceiptMind', html);
+
+  return sendEmail(
+    email,
+    'Verify your email - ReceiptMind',
+    getEmailTemplate(
+      'Welcome to ReceiptMind',
+      'Thank you for signing up! Please verify your email address to activate your account and start managing your receipts efficiently.',
+      verificationUrl,
+      'Verify Email Address'
+    )
+  );
 };
 
 const sendPasswordResetEmail = async (email, token) => {
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const frontendUrl = cleanEnv(process.env.FRONTEND_URL) || 'http://localhost:3000';
   const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
-  
-  const title = 'Password Reset Request';
-  const message = 'We received a request to reset your password. If you didn\'t make this request, you can safely ignore this email. Otherwise, click the button below to set a new password.';
-  const buttonText = 'Reset Password';
-  
-  const html = getEmailTemplate(title, message, resetUrl, buttonText);
-  
-  return sendEmail(email, 'Reset your password - ReceiptMind', html);
+
+  return sendEmail(
+    email,
+    'Reset your password - ReceiptMind',
+    getEmailTemplate(
+      'Password Reset Request',
+      "We received a request to reset your password. If you didn't make this request, you can safely ignore this email. Otherwise, click the button below to set a new password.",
+      resetUrl,
+      'Reset Password'
+    )
+  );
 };
 
 module.exports = {
