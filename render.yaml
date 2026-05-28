@@ -50,6 +50,14 @@ services:
         sync: false
       - key: SMTP_FROM
         sync: false
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
+      - key: FALLBACK_TO_SMTP
+        value: false
 
 databases:
   - name: receiptmind-db

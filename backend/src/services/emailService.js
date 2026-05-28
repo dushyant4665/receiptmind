@@ -21,6 +21,9 @@ const parseBoolean = (value) => {
   return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
 };
 
+const isTruthy = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+const resolve4 = dns.promises?.resolve4 ? dns.promises.resolve4.bind(dns.promises) : null;
+
 const normalizeHost = (value) => {
   const host = cleanEnv(value);
   if (!host) return '';
@@ -41,20 +44,30 @@ const getSmtpConfig = () => {
   return { host, port, user, pass, from, secure };
 };
 
+const getMailProvider = () => {
+  const configured = cleanEnv(process.env.EMAIL_PROVIDER).toLowerCase();
+  if (configured) return configured;
+  if (cleanEnv(process.env.RESEND_API_KEY)) return 'resend';
+  return 'smtp';
+};
+
 const buildTransportOptions = (config, overrides = {}) => {
   const isGmail = config.host.includes('gmail.com');
   const port = overrides.port ?? config.port;
+  const host = overrides.host || (isGmail ? 'smtp.gmail.com' : config.host);
+  const secure = overrides.secure ?? config.secure ?? (isGmail ? port === 465 : port === 465);
 
   return {
-    host: overrides.host || (isGmail ? 'smtp.gmail.com' : config.host),
+    host,
     port,
-    secure: overrides.secure ?? config.secure ?? (isGmail ? port === 465 : port === 465),
+    secure,
+    servername: overrides.servername || config.host,
     auth: {
       user: config.user,
       pass: config.pass,
     },
     family: 4,
-    pool: false,
+    lookup: (_, __, callback) => callback(null, host, 4),
     connectionTimeout: 15000,
     greetingTimeout: 15000,
     socketTimeout: 30000,
@@ -65,7 +78,19 @@ const buildTransportOptions = (config, overrides = {}) => {
   };
 };
 
-const createTransporters = () => {
+const resolveTransportHost = async (host) => {
+  if (!resolve4) return host;
+
+  try {
+    const addresses = await resolve4(host);
+    return addresses[0] || host;
+  } catch (error) {
+    console.error(`SMTP DNS lookup failed for ${host}:`, error.message);
+    return host;
+  }
+};
+
+const createTransporters = async () => {
   const config = getSmtpConfig();
 
   if (!config.host || !config.user || !config.pass) {
@@ -73,18 +98,19 @@ const createTransporters = () => {
   }
 
   const candidates = [];
+  const resolvedHost = await resolveTransportHost(config.host);
 
   if (config.host.includes('gmail.com')) {
     candidates.push(
-      buildTransportOptions(config, { host: 'smtp.gmail.com', port: 587, secure: false }),
-      buildTransportOptions(config, { host: 'smtp.gmail.com', port: 465, secure: true })
+      buildTransportOptions(config, { host: resolvedHost, servername: 'smtp.gmail.com', port: 587, secure: false }),
+      buildTransportOptions(config, { host: resolvedHost, servername: 'smtp.gmail.com', port: 465, secure: true })
     );
   } else {
-    candidates.push(buildTransportOptions(config));
+    candidates.push(buildTransportOptions(config, { host: resolvedHost }));
     if (config.port === 587) {
-      candidates.push(buildTransportOptions(config, { secure: true, port: 465 }));
+      candidates.push(buildTransportOptions(config, { host: resolvedHost, secure: true, port: 465 }));
     } else if (config.port === 465) {
-      candidates.push(buildTransportOptions(config, { secure: false, port: 587 }));
+      candidates.push(buildTransportOptions(config, { host: resolvedHost, secure: false, port: 587 }));
     }
   }
 
@@ -94,11 +120,36 @@ const createTransporters = () => {
 
 // Singleton transporter for pooling efficiency
 let transporterInstance = null;
-const getTransporter = () => {
+const getTransporter = async () => {
   if (!transporterInstance) {
-    transporterInstance = createTransporters();
+    transporterInstance = await createTransporters();
   }
   return transporterInstance;
+};
+
+const sendViaResend = async (to, subject, html) => {
+  const apiKey = cleanEnv(process.env.RESEND_API_KEY);
+  const from = cleanEnv(process.env.SMTP_FROM) || cleanEnv(process.env.RESEND_FROM) || 'ReceiptMind <no-reply@receiptmind.com>';
+
+  if (!apiKey) {
+    throw new Error('RESEND_API_KEY is not configured.');
+  }
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ from, to, subject, html }),
+  });
+
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`Resend API error (${response.status}): ${body}`);
+  }
+
+  return { messageId: `resend:${Date.now()}`, provider: 'resend', body };
 };
 
 const getEmailTemplate = (title, message, url, buttonText) => {
@@ -144,7 +195,22 @@ const getEmailTemplate = (title, message, url, buttonText) => {
 
 const sendEmail = async (to, subject, html) => {
   const config = getSmtpConfig();
-  const transporters = getTransporter();
+  const provider = getMailProvider();
+
+  if (provider === 'resend') {
+    try {
+      const result = await sendViaResend(to, subject, html);
+      console.log('Email sent successfully via Resend');
+      return result;
+    } catch (error) {
+      console.error('Resend email error:', error.message);
+      if (!isTruthy(process.env.FALLBACK_TO_SMTP)) {
+        throw error;
+      }
+    }
+  }
+
+  const transporters = await getTransporter();
 
   try {
     const mailOptions = {
