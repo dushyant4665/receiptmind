@@ -1,5 +1,4 @@
 const dns = require('dns');
-const net = require('net');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
@@ -25,83 +24,101 @@ const parseHost = (value) => {
   return host.replace(/^smtps?:\/\//i, '').replace(/:\d+$/, '');
 };
 
-const getSmtpConfig = () => ({
-  host: parseHost(process.env.SMTP_HOST) || '142.250.102.108',
-  port: parsePort(process.env.SMTP_PORT, 587),
-  user: cleanEnv(process.env.SMTP_USER),
-  pass: cleanEnv(process.env.SMTP_PASS),
-  from: cleanEnv(process.env.SMTP_FROM),
-  secure: parseBoolean(process.env.SMTP_SECURE, false),
+const DEFAULT_GMAIL_ENDPOINTS = [
+  { host: '142.250.102.108', port: 587, secure: false },
+  { host: '142.250.102.108', port: 465, secure: true },
+  { host: '74.125.24.108', port: 587, secure: false },
+  { host: '74.125.24.108', port: 465, secure: true },
+];
+
+const buildCandidateConfigs = () => {
+  const host = parseHost(process.env.SMTP_HOST);
+  const port = parsePort(process.env.SMTP_PORT, 587);
+  const secure = parseBoolean(process.env.SMTP_SECURE, false);
+
+  if (!host) {
+    throw new Error('SMTP_HOST is required.');
+  }
+
+  const base = {
+    host,
+    port,
+    secure: port === 465 ? true : secure,
+  };
+
+  const isGmail = host.includes('gmail.com') || host === 'smtp.gmail.com';
+
+  if (isGmail) {
+    return DEFAULT_GMAIL_ENDPOINTS.map((endpoint) => ({
+      ...base,
+      ...endpoint,
+      servername: 'smtp.gmail.com',
+    }));
+  }
+
+  const candidates = [base];
+
+  if (port === 587) {
+    candidates.push({
+      ...base,
+      port: 465,
+      secure: true,
+    });
+  } else if (port === 465) {
+    candidates.push({
+      ...base,
+      port: 587,
+      secure: false,
+    });
+  }
+
+  return candidates;
+};
+
+const buildTransporter = (config) => nodemailer.createTransport({
+  host: config.host,
+  port: config.port,
+  secure: config.secure,
+  requireTLS: !config.secure,
+  authMethod: 'LOGIN',
+  auth: {
+    user: cleanEnv(process.env.SMTP_USER),
+    pass: cleanEnv(process.env.SMTP_PASS),
+  },
+  family: 4,
+  lookup: (hostname, options, callback) => {
+    dns.lookup(hostname, { ...options, family: 4, all: false }, callback);
+  },
+  connectionTimeout: 30000,
+  greetingTimeout: 15000,
+  socketTimeout: 30000,
+  pool: false,
+  tls: {
+    rejectUnauthorized: false,
+    minVersion: 'TLSv1.2',
+    servername: config.servername || config.host,
+  },
 });
 
-const buildTransporter = () => {
-  const config = getSmtpConfig();
+let transporters;
 
-  if (!config.host || !config.user || !config.pass) {
-    throw new Error('SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USER, and SMTP_PASS.');
+const getTransporters = () => {
+  if (transporters) {
+    return transporters;
   }
 
-  const secure = config.port === 465 ? true : config.secure;
-
-  return nodemailer.createTransport({
-    host: config.host,
-    port: config.port,
-    secure,
-    requireTLS: !secure,
-    authMethod: 'LOGIN',
-    auth: {
-      user: config.user,
-      pass: config.pass,
-    },
-    family: 4,
-    lookup: (hostname, options, callback) => {
-      dns.lookup(hostname, { ...options, family: 4, all: false }, callback);
-    },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 20000,
-    pool: false,
-    tls: {
-      rejectUnauthorized: false,
-      minVersion: 'TLSv1.2',
-      servername: 'smtp.gmail.com',
-    },
-  });
-};
-
-const testTcpReachability = async () => {
-  const { host, port } = getSmtpConfig();
-
-  await new Promise((resolve, reject) => {
-    const socket = net.createConnection({ host, port, family: 4 });
-    const timeout = setTimeout(() => {
-      socket.destroy(new Error(`TCP preflight timeout to ${host}:${port}`));
-    }, 5000);
-
-    socket.once('connect', () => {
-      clearTimeout(timeout);
-      socket.end();
-      resolve();
-    });
-
-    socket.once('error', (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-  });
-};
-
-let transporter;
-
-const getTransporter = () => {
-  if (!transporter) {
-    transporter = buildTransporter();
+  const user = cleanEnv(process.env.SMTP_USER);
+  const pass = cleanEnv(process.env.SMTP_PASS);
+  if (!user || !pass) {
+    throw new Error('SMTP_USER and SMTP_PASS are required.');
   }
-  return transporter;
+
+  transporters = buildCandidateConfigs().map(buildTransporter);
+  return transporters;
 };
 
-const resetTransporter = () => {
-  transporter = undefined;
+const resetTransporters = () => {
+  transporters = undefined;
 };
 
 const getEmailTemplate = (title, message, url, buttonText) => `
@@ -144,29 +161,32 @@ const getEmailTemplate = (title, message, url, buttonText) => `
 `;
 
 const sendEmail = async (to, subject, html) => {
-  const config = getSmtpConfig();
-  const from = config.from || config.user;
-  const transporter = getTransporter();
+  const from = cleanEnv(process.env.SMTP_FROM) || cleanEnv(process.env.SMTP_USER);
+  const transportersToTry = getTransporters();
+  let lastError;
 
-  try {
-    await testTcpReachability();
+  for (const transporter of transportersToTry) {
+    try {
+      const info = await transporter.sendMail({
+        from: from.includes('<') ? from : `ReceiptMind <${from}>`,
+        to,
+        subject,
+        html,
+      });
 
-    const info = await transporter.sendMail({
-      from: from.includes('<') ? from : `ReceiptMind <${from}>`,
-      to,
-      subject,
-      html,
-    });
-
-    console.log(`Email sent successfully: ${info.messageId}`);
-    return info;
-  } catch (error) {
-    console.error('Email delivery failed:', error);
-    if (['ETIMEDOUT', 'ECONNECTION', 'ESOCKET'].includes(error.code) || /timeout/i.test(error.message || '')) {
-      resetTransporter();
+      console.log(`Email sent successfully: ${info.messageId}`);
+      return info;
+    } catch (error) {
+      lastError = error;
+      console.error(`Email delivery failed (${transporter.options.host}:${transporter.options.port}):`, error.message);
     }
-    throw error;
   }
+
+  if (lastError && ['ETIMEDOUT', 'ECONNECTION', 'ESOCKET'].includes(lastError.code)) {
+    resetTransporters();
+  }
+
+  throw lastError || new Error('Unable to send email via SMTP.');
 };
 
 const sendVerificationEmail = async (email, token) => {
