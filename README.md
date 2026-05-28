@@ -1,6 +1,6 @@
-# ReceiptMind Enterprise
+# ReceiptMind 
 
-ReceiptMind Enterprise is a two-app monorepo for receipt upload, AI extraction, review workflows, rules, exceptions, and CSV export.
+ReceiptMind is a two-app monorepo for receipt upload, AI extraction, review workflows, rules, exceptions, and CSV export.
 
 ## What It Does
 
