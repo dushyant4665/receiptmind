@@ -1,4 +1,5 @@
 const dns = require('dns');
+const net = require('net');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
@@ -25,7 +26,7 @@ const parseHost = (value) => {
 };
 
 const getSmtpConfig = () => ({
-  host: parseHost(process.env.SMTP_HOST),
+  host: parseHost(process.env.SMTP_HOST) || '142.250.102.108',
   port: parsePort(process.env.SMTP_PORT, 587),
   user: cleanEnv(process.env.SMTP_USER),
   pass: cleanEnv(process.env.SMTP_PASS),
@@ -46,6 +47,8 @@ const buildTransporter = () => {
     host: config.host,
     port: config.port,
     secure,
+    requireTLS: !secure,
+    authMethod: 'LOGIN',
     auth: {
       user: config.user,
       pass: config.pass,
@@ -57,11 +60,34 @@ const buildTransporter = () => {
     connectionTimeout: 10000,
     greetingTimeout: 10000,
     socketTimeout: 20000,
+    pool: false,
     tls: {
       rejectUnauthorized: false,
       minVersion: 'TLSv1.2',
-      servername: config.host,
+      servername: 'smtp.gmail.com',
     },
+  });
+};
+
+const testTcpReachability = async () => {
+  const { host, port } = getSmtpConfig();
+
+  await new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host, port, family: 4 });
+    const timeout = setTimeout(() => {
+      socket.destroy(new Error(`TCP preflight timeout to ${host}:${port}`));
+    }, 5000);
+
+    socket.once('connect', () => {
+      clearTimeout(timeout);
+      socket.end();
+      resolve();
+    });
+
+    socket.once('error', (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
   });
 };
 
@@ -123,6 +149,8 @@ const sendEmail = async (to, subject, html) => {
   const transporter = getTransporter();
 
   try {
+    await testTcpReachability();
+
     const info = await transporter.sendMail({
       from: from.includes('<') ? from : `ReceiptMind <${from}>`,
       to,
