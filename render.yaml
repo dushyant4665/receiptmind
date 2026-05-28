@@ -40,24 +40,18 @@ services:
         value: gemini-2.0-flash
       - key: GEMINI_FALLBACK_MODEL
         value: gemini-2.0-flash-001
-      - key: SMTP_HOST
-        value: smtp.gmail.com
-      - key: SMTP_PORT
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: BREVO_SMTP_PORT
         value: 587
-      - key: SMTP_USER
+      - key: BREVO_SMTP_USER
         sync: false
-      - key: SMTP_PASS
+      - key: BREVO_SMTP_KEY
         sync: false
-      - key: SMTP_FROM
+      - key: BREVO_FROM
         sync: false
-      - key: EMAIL_PROVIDER
-        value: resend
-      - key: RESEND_API_KEY
-        sync: false
-      - key: RESEND_FROM
-        sync: false
-      - key: FALLBACK_TO_SMTP
-        value: false
 
 databases:
   - name: receiptmind-db
