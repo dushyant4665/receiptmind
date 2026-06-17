@@ -10,6 +10,7 @@ sequenceDiagram
     participant Frontend
     participant Backend
     participant Storage
+    participant Gateway
     participant AI
     participant DB
 
@@ -18,17 +19,19 @@ sequenceDiagram
     Backend->>Storage: Save file
     Backend->>DB: Create receipt + processing job
     Backend-->>Frontend: Return receipt id
-    Backend->>AI: Try OpenRouter first
+    Backend->>Gateway: Send extraction request
+    Gateway->>AI: Try OpenRouter first
     alt OpenRouter succeeds
-        AI-->>Backend: Structured JSON
+        AI-->>Gateway: Structured JSON
     else OpenRouter fails
-        Backend->>AI: Retry with Gemini
+        Gateway->>AI: Retry with Gemini
         alt Gemini succeeds
-            AI-->>Backend: Structured JSON
+            AI-->>Gateway: Structured JSON
         else Gemini fails
-            Backend->>Backend: Run Tesseract OCR fallback
+            Gateway->>AI: Fail over to Gemini fallback model
         end
     end
+    Gateway-->>Backend: Structured JSON
     Backend->>Backend: Validate, normalize, apply rules
     Backend->>DB: Update receipt state
     Frontend->>Backend: Poll receipt details
@@ -53,7 +56,8 @@ stateDiagram-v2
 - `authController`: registration, verification, password reset, and session flows
 - `emailService`: Brevo API integration for verification and password reset email
 - `receiptProcessingService`: queue orchestration and status transitions
-- `aiService`: provider selection and extraction fallback chain
+- `aiService`: receipt extraction fallback chain
+- `ai-gateway`: standalone TypeScript gateway with Axios retry and failover
 - `validationService`: field cleanup, normalization, confidence handling
 - `ruleService`: business rule application
 - `exceptionService`: review issue creation

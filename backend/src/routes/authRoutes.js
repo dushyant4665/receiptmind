@@ -1,17 +1,101 @@
-const express = require('express');
-const authController = require('../controllers/authController');
-const authenticate = require('../middleware/auth');
+const express =
+  require('express');
 
-const router = express.Router();
+const authController =
+  require('../controllers/authController');
 
-router.post('/register', authController.register);
-router.post('/login', authController.login);
-router.post('/verify-email', authController.verifyEmail);
-router.post('/resend-verification', authController.resendVerification);
-router.post('/refresh', authController.refresh);
-router.post('/forgot-password', authController.forgotPassword);
-router.post('/reset-password', authController.resetPassword);
-router.post('/logout', authController.logout);
-router.post('/logout-all', authenticate, authController.logoutAll);
+const validateRequest =
+  require('../middleware/validateRequest');
 
-module.exports = router;
+const {
+
+  registerSchema,
+
+  loginSchema,
+
+  refreshTokenSchema,
+
+} = require('../validators/authValidators');
+
+const router =
+  express.Router();
+
+/*
+  =====================================
+  REGISTER
+  =====================================
+*/
+
+router.post(
+
+  '/register',
+
+  validateRequest(
+    registerSchema
+  ),
+
+  authController.register
+);
+
+/*
+  =====================================
+  LOGIN
+  =====================================
+*/
+
+router.post(
+
+  '/login',
+
+  validateRequest(
+    loginSchema
+  ),
+
+  authController.login
+);
+
+/*
+  =====================================
+  REFRESH TOKEN
+  =====================================
+*/
+
+router.post(
+
+  '/refresh',
+
+  validateRequest(
+    refreshTokenSchema
+  ),
+
+  authController.refreshToken
+);
+
+/*
+  =====================================
+  VERIFY EMAIL
+  =====================================
+*/
+
+router.get(
+
+  '/verify-email/:token',
+
+  authController.verifyEmail
+);
+
+/*
+  =====================================
+  LOGOUT
+  =====================================
+*/
+
+router.post(
+
+  '/logout',
+
+  authController.logout
+);
+
+module.exports =
+  router;

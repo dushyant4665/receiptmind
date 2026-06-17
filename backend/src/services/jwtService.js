@@ -1,33 +1,131 @@
-const jwt = require('jsonwebtoken');
-require('dotenv').config({ override: true });
+const jwt =
+  require('jsonwebtoken');
 
-const generateAccessToken = (userId, organizationId) => {
+require('dotenv').config();
+
+/*
+  =====================================
+  ENV
+  =====================================
+*/
+
+const ACCESS_SECRET =
+  process.env.JWT_ACCESS_SECRET;
+
+const REFRESH_SECRET =
+  process.env.JWT_REFRESH_SECRET;
+
+if (
+  !ACCESS_SECRET ||
+  !REFRESH_SECRET
+) {
+
+  throw new Error(
+    'JWT secrets missing'
+  );
+}
+
+/*
+  =====================================
+  ACCESS TOKEN
+  =====================================
+*/
+
+const generateAccessToken = (
+  payload
+) => {
+
   return jwt.sign(
-    { user_id: userId, organization_id: organizationId },
-    process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_ACCESS_EXPIRATION }
+
+    {
+      userId:
+        payload.userId,
+
+      organizationId:
+        payload.organizationId,
+
+      email:
+        payload.email,
+    },
+
+    ACCESS_SECRET,
+
+    {
+      expiresIn: '15m',
+    }
   );
 };
 
-const generateRefreshToken = (userId) => {
+/*
+  =====================================
+  REFRESH TOKEN
+  =====================================
+*/
+
+const generateRefreshToken = (
+  payload
+) => {
+
   return jwt.sign(
-    { user_id: userId },
-    process.env.JWT_REFRESH_SECRET,
-    { expiresIn: process.env.JWT_REFRESH_EXPIRATION }
+
+    {
+      userId:
+        payload.userId,
+
+      organizationId:
+        payload.organizationId,
+
+      email:
+        payload.email,
+    },
+
+    REFRESH_SECRET,
+
+    {
+      expiresIn: '7d',
+    }
   );
 };
 
-const verifyToken = (token, isRefresh = false) => {
-  const secret = isRefresh ? process.env.JWT_REFRESH_SECRET : process.env.JWT_SECRET;
-  try {
-    return jwt.verify(token, secret);
-  } catch (error) {
-    return null;
-  }
+/*
+  =====================================
+  VERIFY ACCESS TOKEN
+  =====================================
+*/
+
+const verifyAccessToken = (
+  token
+) => {
+
+  return jwt.verify(
+    token,
+    ACCESS_SECRET
+  );
+};
+
+/*
+  =====================================
+  VERIFY REFRESH TOKEN
+  =====================================
+*/
+
+const verifyRefreshToken = (
+  token
+) => {
+
+  return jwt.verify(
+    token,
+    REFRESH_SECRET
+  );
 };
 
 module.exports = {
+
   generateAccessToken,
+
   generateRefreshToken,
-  verifyToken,
+
+  verifyAccessToken,
+
+  verifyRefreshToken,
 };

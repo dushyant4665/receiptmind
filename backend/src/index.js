@@ -1,23 +1,168 @@
-require('dotenv').config({ override: true });
-const app = require('./app');
-const runMigrations = require('./db/migrations');
+require('dotenv').config();
 
-const PORT = process.env.PORT || 3001;
+/*
+  =====================================
+  APP
+  =====================================
+*/
 
-const start = async () => {
-  try {
-    console.log(`[BOOT DEBUG] pid=${process.pid} port=${PORT}`);
-    // Run Database Migrations
-    await runMigrations();
-    console.log('Database migrations completed');
+const app =
+  require('./app');
 
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
-    });
-  } catch (error) {
-    console.error('Failed to start server:', error);
-    process.exit(1);
+/*
+  =====================================
+  DATABASE
+  =====================================
+*/
+
+const db =
+  require('./config/db');
+
+/*
+  =====================================
+  WORKER
+  =====================================
+*/
+
+require('./workers/receiptWorker');
+
+/*
+  =====================================
+  PORT
+  =====================================
+*/
+
+const PORT =
+  process.env.PORT || 5000;
+
+/*
+  =====================================
+  START SERVER
+  =====================================
+*/
+
+const server =
+  app.listen(
+    PORT,
+    () => {
+
+      console.log(`
+=====================================
+ReceiptMind Backend Running
+=====================================
+
+PORT: ${PORT}
+ENV: ${process.env.NODE_ENV}
+
+=====================================
+`);
+    }
+  );
+
+/*
+  =====================================
+  UNHANDLED REJECTION
+  =====================================
+*/
+
+process.on(
+  'unhandledRejection',
+  (err) => {
+
+    console.error(
+      'Unhandled Rejection:',
+      err
+    );
+
+    shutdown();
   }
-};
+);
 
-start();
+/*
+  =====================================
+  UNCAUGHT EXCEPTION
+  =====================================
+*/
+
+process.on(
+  'uncaughtException',
+  (err) => {
+
+    console.error(
+      'Uncaught Exception:',
+      err
+    );
+
+    shutdown();
+  }
+);
+
+/*
+  =====================================
+  GRACEFUL SHUTDOWN
+  =====================================
+*/
+
+const shutdown =
+  async () => {
+
+    console.log(
+      'Gracefully shutting down...'
+    );
+
+    try {
+
+      /*
+        =============================
+        CLOSE HTTP SERVER
+        =============================
+      */
+
+      server.close();
+
+      /*
+        =============================
+        CLOSE DB POOL
+        =============================
+      */
+
+      await db.pool.end();
+
+      console.log(
+        'Shutdown complete'
+      );
+
+      process.exit(1);
+
+    } catch (error) {
+
+      console.error(
+        'Shutdown Error:',
+        error.message
+      );
+
+      process.exit(1);
+    }
+  };
+
+/*
+  =====================================
+  SIGTERM
+  =====================================
+*/
+
+process.on(
+  'SIGTERM',
+  shutdown
+);
+
+/*
+  =====================================
+  SIGINT
+  =====================================
+*/
+
+process.on(
+  'SIGINT',
+  shutdown
+);

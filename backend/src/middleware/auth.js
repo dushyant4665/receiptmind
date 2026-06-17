@@ -1,25 +1,160 @@
-const jwtService = require('../services/jwtService');
-const { errorResponse } = require('../utils/response');
+const jwtService =
+  require('../services/jwtService');
 
-const authenticate = (req, res, next) => {
-  const authHeader = req.headers.authorization;
+const db =
+  require('../config/db');
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json(errorResponse('No token provided'));
+const {
+  errorResponse,
+} = require('../utils/response');
+
+/*
+  =====================================
+  AUTH MIDDLEWARE
+  =====================================
+*/
+
+const authenticate = async (
+  req,
+  res,
+  next
+) => {
+
+  try {
+
+    /*
+      ================================
+      AUTH HEADER
+      ================================
+    */
+
+    const authHeader =
+      req.headers.authorization;
+
+    if (!authHeader) {
+
+      return res
+        .status(401)
+        .json(
+          errorResponse(
+            'Authorization header missing'
+          )
+        );
+    }
+
+    /*
+      ================================
+      BEARER TOKEN
+      ================================
+    */
+
+    const token =
+      authHeader.startsWith(
+        'Bearer '
+      )
+        ? authHeader.split(' ')[1]
+        : null;
+
+    if (!token) {
+
+      return res
+        .status(401)
+        .json(
+          errorResponse(
+            'Invalid authorization format'
+          )
+        );
+    }
+
+    /*
+      ================================
+      VERIFY TOKEN
+      ================================
+    */
+
+    const decoded =
+      jwtService.verifyAccessToken(
+        token
+      );
+
+    /*
+      ================================
+      FETCH USER
+      ================================
+    */
+
+    const result =
+      await db.query(
+        `
+          SELECT
+            id,
+            organization_id,
+            name,
+            email
+          FROM users
+          WHERE id = $1
+          LIMIT 1
+        `,
+        [
+          decoded.userId,
+        ]
+      );
+
+    if (
+      result.rows.length === 0
+    ) {
+
+      return res
+        .status(401)
+        .json(
+          errorResponse(
+            'User not found'
+          )
+        );
+    }
+
+    const user =
+      result.rows[0];
+
+    /*
+      ================================
+      ATTACH USER
+      ================================
+    */
+
+    req.user = {
+
+      userId:
+        user.id,
+
+      organizationId:
+        user.organization_id,
+
+      name:
+        user.name,
+
+      email:
+        user.email,
+    };
+
+    next();
+
+  } catch (error) {
+
+    console.error(
+      'Auth Middleware Error:',
+      error.message
+    );
+
+    return res
+      .status(401)
+      .json(
+        errorResponse(
+          'Unauthorized'
+        )
+      );
   }
-
-  const token = authHeader.split(' ')[1];
-  const decoded = jwtService.verifyToken(token);
-
-  if (!decoded) {
-    return res.status(401).json(errorResponse('Invalid or expired token'));
-  }
-
-  req.user = {
-    userId: decoded.user_id,
-    organizationId: decoded.organization_id
-  };
-  next();
 };
 
-module.exports = authenticate;
+module.exports =
+  authenticate;

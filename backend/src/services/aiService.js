@@ -1,329 +1,384 @@
-require('dotenv').config({ override: true });
-const ocrService = require('./ocrService');
+require('dotenv').config();
 
-const DEFAULT_CATEGORY = 'General';
-const OCR_TEXT_LIMIT = 3000;
-const GEMINI_MODEL_CANDIDATES = [
-  process.env.GEMINI_MODEL,
-  process.env.GEMINI_FALLBACK_MODEL,
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-001',
-].filter(Boolean);
+const sharp = require('sharp');
 
-const OPENROUTER_MODEL_CANDIDATES = [
-  process.env.OPENAI_MODEL,
-  'google/gemini-2.0-flash-001',
-  'openai/gpt-4o-mini',
-].filter(Boolean);
+const {
+  normalizeDate,
+  normalizeAmount,
+  normalizeVendor,
+  normalizeCurrency,
+} = require('../utils/normalizers');
 
-/**
- * Main function to extract receipt data using AI.
- * It tries OpenRouter first, then Gemini, and finally falls back to local OCR.
- */
-const extractWithContext = async (fileBuffer, mimeType = 'image/jpeg') => {
-  const geminiKey = process.env.GEMINI_API_KEY;
-  const openRouterKey = process.env.OPENAI_API_KEY;
+const {
+  buildReceiptPrompt,
+} = require('../utils/prompts');
 
-  if (!openRouterKey && !geminiKey) {
-    throw new Error('No AI provider configured');
-  }
+const {
+  validateExtraction,
+} = require('./validationService');
 
-  const base64File = toBase64(fileBuffer);
-  const ocrText = await ocrService.extractText(fileBuffer, mimeType);
-  let lastError = null;
+const AI_TIMEOUT_MS =
+  Number(process.env.AI_REQUEST_TIMEOUT_MS) || 45000;
 
-  // Try OpenRouter models
-  if (openRouterKey) {
-    for (const modelName of OPENROUTER_MODEL_CANDIDATES) {
-      try {
-        console.log(`Trying OpenRouter with ${modelName}...`);
-        const result = await extractWithOpenRouter(openRouterKey, modelName, base64File, mimeType, ocrText);
-        return finalizeExtraction(result, 'openrouter', modelName);
-      } catch (error) {
-        console.warn(`OpenRouter ${modelName} failed: ${error.message}`);
-        lastError = error;
-      }
-    }
-  }
+const AI_RETRIES =
+  Math.max(
+    0,
+    Number(process.env.AI_MAX_RETRIES) || 1
+  );
 
-  // Try Gemini models
-  if (geminiKey) {
-    for (const modelName of GEMINI_MODEL_CANDIDATES) {
-      try {
-        console.log(`Trying Gemini with ${modelName}...`);
-        const result = await extractWithGemini(geminiKey, modelName, base64File, mimeType, ocrText);
-        return finalizeExtraction(result, 'gemini', modelName);
-      } catch (error) {
-        console.warn(`Gemini ${modelName} failed: ${error.message}`);
-        lastError = error;
-      }
-    }
-  }
+const OPENROUTER_API_KEY =
+  process.env.OPENROUTER_API_KEY ||
+  process.env.OPENAI_API_KEY ||
+  '';
 
-  // Fallback to Tesseract OCR if AI fails
-  if (ocrText) {
-    console.warn('Falling back to OCR-assisted heuristic extraction.');
-    return finalizeExtraction(extractHeuristically(ocrText), 'tesseract', 'ocr-fallback', ocrText);
-  }
+const OPENROUTER_MODEL =
+  process.env.OPENROUTER_MODEL ||
+  process.env.OPENAI_MODEL ||
+  '';
 
-  throw lastError || new Error('All extraction attempts failed');
+const GEMINI_API_KEY =
+  process.env.GEMINI_API_KEY || '';
+
+const GEMINI_MODEL =
+  process.env.GEMINI_MODEL ||
+  'gemini-2.0-flash';
+
+const GEMINI_FALLBACK_MODEL =
+  process.env.GEMINI_FALLBACK_MODEL ||
+  'gemini-2.0-flash-001';
+
+const isPdf = (mimeType) =>
+  mimeType === 'application/pdf';
+
+const isImageMimeType = (mimeType) =>
+  Boolean(mimeType) && !isPdf(mimeType);
+
+const sleep = (ms) =>
+  new Promise((resolve) =>
+    setTimeout(resolve, ms)
+  );
+
+const getErrorMessage = (error) =>
+  error?.name === 'AbortError'
+    ? 'Request timed out'
+    : error?.message || String(error);
+
+const preprocessImage = async (buffer) => {
+  return sharp(buffer)
+    .resize({
+      width: 1800,
+      withoutEnlargement: true,
+    })
+    .grayscale()
+    .normalize()
+    .sharpen()
+    .jpeg({
+      quality: 90,
+    })
+    .toBuffer();
 };
 
-const extractWithOpenRouter = async (apiKey, modelName, base64File, mimeType, ocrText = '') => {
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': process.env.FRONTEND_URL || 'http://localhost:3000',
-      'X-Title': 'ReceiptMind',
-    },
-    body: JSON.stringify({
-      model: modelName,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: buildPrompt(mimeType, ocrText) },
-            ...(mimeType === 'application/pdf'
-              ? []
-              : [{ type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64File}` } }]),
-          ],
-        },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.05,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(await buildProviderError('OpenRouter API error', response));
-  }
-
-  const data = await response.json();
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) throw new Error('Empty response from OpenRouter');
-
-  return parseJson(content);
-};
-
-const extractWithGemini = async (apiKey, modelName, base64File, mimeType, ocrText = '') => {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-  const parts = [{ text: buildPrompt(mimeType, ocrText) }];
-
-  if (mimeType !== 'application/pdf') {
-    parts.push({ inlineData: { mimeType, data: base64File } });
-  }
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts }],
-      generationConfig: { temperature: 0.05, responseMimeType: 'application/json' },
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(await buildProviderError('Gemini API error', response));
-  }
-
-  const data = await response.json();
-  const content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!content) throw new Error('Empty response from Gemini');
-
-  return parseJson(content);
-};
-
-const buildPrompt = (mimeType, ocrText = '') => {
-  const ocrSection = ocrText
-    ? `\nOCR text extracted from the document (may contain noise, use only if helpful):\n${ocrText.slice(0, OCR_TEXT_LIMIT)}\n`
-    : '';
-
-  return `You are extracting structured expense data from a receipt or invoice.
-Return only one valid JSON object with these fields:
-{
-  "invoice_number": string,
-  "invoice_date": string,
-  "vendor_name": string,
-  "vendor_gstin": string,
-  "buyer_name": string,
-  "amount": number,
-  "subtotal": number,
-  "tax_amount": number,
-  "currency": string,
-  "category": string,
-  "confidence": number
-}
-
-Rules:
-- Prefer the merchant or store name at the top as vendor_name.
-- Prefer the final payable total for amount.
-- invoice_date should be the bill or receipt date.
-- confidence must be between 0 and 1.
-- If a field is missing, use empty string for text fields and 0 for numeric fields.
-- Do not wrap JSON in markdown.
-- Document mime type: ${mimeType}.${ocrSection}`;
-};
-
-const buildProviderError = async (prefix, response) => {
-  let detail = '';
-
+const parseAIResponse = (content) => {
   try {
-    const text = await response.text();
-    detail = text ? ` ${text.slice(0, 300)}` : '';
+    const cleaned = content
+      .replace(/```json/g, '')
+      .replace(/```/g, '')
+      .trim();
+
+    return JSON.parse(cleaned);
   } catch (error) {
-    detail = '';
+    const match = content.match(/\{[\s\S]*\}/);
+
+    if (!match) {
+      throw new Error('Failed to parse AI JSON response');
+    }
+
+    return JSON.parse(match[0]);
   }
-
-  return `${prefix}: ${response.status}${detail}`;
 };
 
-const normalizeExtractedNumber = (value) => {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  const cleaned = String(value || '').replace(/[^\d.-]/g, '');
-  const parsed = Number.parseFloat(cleaned);
-  return Number.isFinite(parsed) ? parsed : 0;
-};
+const fetchWithTimeout = async (
+  url,
+  options = {},
+  timeoutMs = AI_TIMEOUT_MS
+) => {
+  const controller = new AbortController();
 
-const parseJson = (content) => {
-  const clean = content.replace(/```json|```/gi, '').trim();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
   try {
-    const raw = JSON.parse(clean);
-    return {
-      invoice_number: String(raw.invoice_number || raw.bill_number || ''),
-      invoice_date: String(raw.invoice_date || raw.date || ''),
-      vendor_name: String(raw.vendor_name || raw.merchant_name || ''),
-      vendor_gstin: String(raw.vendor_gstin || ''),
-      buyer_name: String(raw.buyer_name || ''),
-      amount: normalizeExtractedNumber(raw.amount || raw.total || 0),
-      subtotal: normalizeExtractedNumber(raw.subtotal || 0),
-      tax_amount: normalizeExtractedNumber(raw.tax_amount || raw.tax || 0),
-      currency: String(raw.currency || 'USD'),
-      category: String(raw.category || ''),
-      confidence: normalizeExtractedNumber(raw.confidence || 0),
-    };
-  } catch (e) {
-    throw new Error('Failed to parse AI JSON response');
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
   }
 };
 
-const finalizeExtraction = (result, provider, model, rawText = '') => {
-  return {
-    ...result,
-    provider,
-    model,
-    raw_text: rawText,
-    ai_output: { provider, model, fields: { ...result } },
+const toBase64Image = async (
+  fileBuffer,
+  mimeType
+) => {
+  if (isImageMimeType(mimeType)) {
+    const optimizedImage =
+      await preprocessImage(fileBuffer);
+
+    return optimizedImage.toString('base64');
+  }
+
+  return fileBuffer.toString('base64');
+};
+
+const normalizeExtraction = (parsed, rawContent) => {
+  const normalized = {
+    vendor_name: normalizeVendor(parsed.vendor_name),
+    amount: normalizeAmount(parsed.amount),
+    subtotal: normalizeAmount(parsed.subtotal),
+    tax_amount: normalizeAmount(parsed.tax_amount),
+    receipt_date: normalizeDate(parsed.receipt_date),
+    currency: normalizeCurrency(parsed.currency),
+    category: parsed.category || 'General',
+    invoice_number: parsed.invoice_number || '',
+    payment_method: parsed.payment_method || '',
+    confidence: Number(parsed.confidence) || 0.7,
+    raw_ai_response: rawContent,
   };
+
+  return validateExtraction(normalized);
 };
 
-const toBase64 = (buffer) => Buffer.isBuffer(buffer) ? buffer.toString('base64') : buffer;
-
-const OCR_VENDOR_STOP_WORDS = new Set([
-  'tax invoice',
-  'invoice',
-  'receipt',
-  'bill',
-  'cash memo',
-  'simplified tax invoice',
-]);
-
-const pickVendorName = (text) => {
-  const lines = String(text || '')
-    .split('\n')
-    .map((line) => line.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
-
-  for (const line of lines.slice(0, 8)) {
-    const normalized = line.toLowerCase();
-    if (normalized.length < 3 || normalized.length > 60) continue;
-    if (/\d{3,}/.test(normalized)) continue;
-    if (OCR_VENDOR_STOP_WORDS.has(normalized)) continue;
-    if (/gst|phone|table|server|order|token|time|date|total|amount|qty/i.test(line)) continue;
-    return line;
+const extractWithOpenRouter = async (
+  fileBuffer,
+  mimeType = 'image/jpeg',
+  ocrText = ''
+) => {
+  if (!OPENROUTER_API_KEY || !OPENROUTER_MODEL) {
+    throw new Error('Missing OpenRouter configuration');
   }
 
-  return lines[0] || '';
-};
-
-const pickBestAmount = (text) => {
-  const amountMatches = [...String(text || '').matchAll(/(?:grand total|total amount|net amount|amount due|amount|total)\s*[:\-]?\s*(?:rs\.?|inr|\$)?\s*([0-9][0-9,]*\.?[0-9]{0,2})/gi)];
-  if (amountMatches.length > 0) {
-    return normalizeExtractedNumber(amountMatches[amountMatches.length - 1][1]);
+  if (isPdf(mimeType)) {
+    throw new Error('OpenRouter is skipped for PDF receipts');
   }
 
-  const fallbackMatches = [...String(text || '').matchAll(/(?:rs\.?|inr|\$)\s*([0-9][0-9,]*\.?[0-9]{0,2})/gi)];
-  if (fallbackMatches.length > 0) {
-    return Math.max(...fallbackMatches.map((match) => normalizeExtractedNumber(match[1])));
+  const base64Image = await toBase64Image(fileBuffer, mimeType);
+
+  const response = await fetchWithTimeout(
+    'https://openrouter.ai/api/v1/chat/completions',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        ...(process.env.OPENROUTER_APP_URL
+          ? { 'HTTP-Referer': process.env.OPENROUTER_APP_URL }
+          : {}),
+        ...(process.env.OPENROUTER_APP_NAME
+          ? { 'X-Title': process.env.OPENROUTER_APP_NAME }
+          : {}),
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: buildReceiptPrompt(ocrText),
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${mimeType};base64,${base64Image}`,
+                },
+              },
+            ],
+          },
+        ],
+        temperature: 0,
+        response_format: {
+          type: 'json_object',
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `OpenRouter API Error: ${await response.text()}`
+    );
   }
 
-  return 0;
-};
+  const data = await response.json();
 
-const pickBestDate = (text) => {
-  const matches = String(text || '').match(/\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2})\b/g);
-  return matches?.[0] || '';
-};
+  const rawContent =
+    data?.choices?.[0]?.message?.content;
 
-const inferCurrency = (text) => {
-  if (/\b(?:rs\.?|inr)\b/i.test(text)) return 'INR';
-  if (/\$|usd/i.test(text)) return 'USD';
-  if (/eur|€/i.test(text)) return 'EUR';
-  return 'USD';
-};
-
-const pickBestTax = (text) => {
-  const match = String(text || '').match(/(?:tax|vat|gst)\s*[:\-]?\s*(?:rs\.?|inr|\$)?\s*([0-9][0-9,]*\.?[0-9]{0,2})/i);
-  return match ? normalizeExtractedNumber(match[1]) : 0;
-};
-
-const pickBestSubtotal = (text, total, tax) => {
-  const explicitMatch = String(text || '').match(/(?:subtotal|sub total|taxable amount)\s*[:\-]?\s*(?:rs\.?|inr|\$)?\s*([0-9][0-9,]*\.?[0-9]{0,2})/i);
-  if (explicitMatch) {
-    return normalizeExtractedNumber(explicitMatch[1]);
+  if (!rawContent) {
+    throw new Error('Empty OpenRouter response');
   }
-  if (total > 0 && tax > 0 && total >= tax) {
-    return normalizeExtractedNumber(total - tax);
-  }
-  return total;
-};
-  
-/**
- * Basic heuristic extraction using regex when AI fails.
- */
-const extractHeuristically = (text) => {
-  const amount = pickBestAmount(text);
-  const taxAmount = pickBestTax(text);
-  const subtotal = pickBestSubtotal(text, amount, taxAmount);
-  const invoiceNumber =
-    text.match(/(?:inv|bill|invoice)\s*(?:no|#|number)?\s*[:\-]?\s*([A-Z0-9-]{3,})/i)?.[1] ||
-    '';
-  const invoiceDate = pickBestDate(text);
-  const vendorName = pickVendorName(text);
-  const currency = inferCurrency(text);
-  const confidenceSignals = [
-    Boolean(vendorName),
-    amount > 0,
-    Boolean(invoiceDate),
-    Boolean(invoiceNumber),
-    String(text || '').trim().length > 40,
-  ].filter(Boolean).length;
-  const confidence = confidenceSignals >= 4 ? 0.82 : confidenceSignals === 3 ? 0.72 : confidenceSignals === 2 ? 0.56 : 0.34;
-  
-  return {
-    invoice_number: invoiceNumber,
-    invoice_date: invoiceDate,
-    vendor_name: vendorName,
-    vendor_gstin: '',
-    buyer_name: '',
-    amount: amount,
-    subtotal,
-    tax_amount: taxAmount,
-    currency,
-    category: DEFAULT_CATEGORY,
-    confidence,
-  };
+
+  return normalizeExtraction(
+    parseAIResponse(rawContent),
+    rawContent
+  );
 };
 
-module.exports = { extractWithContext };
+const extractWithGemini = async (
+  fileBuffer,
+  mimeType = 'image/jpeg',
+  ocrText = '',
+  model = GEMINI_MODEL
+) => {
+  if (!GEMINI_API_KEY) {
+    throw new Error('Missing GEMINI_API_KEY');
+  }
+
+  const base64Image = await toBase64Image(fileBuffer, mimeType);
+
+  const response = await fetchWithTimeout(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: buildReceiptPrompt(ocrText),
+              },
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Image,
+                },
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0,
+          responseMimeType: 'application/json',
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Gemini API Error: ${await response.text()}`);
+  }
+
+  const data = await response.json();
+
+  const rawContent =
+    data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!rawContent) {
+    throw new Error('Empty Gemini response');
+  }
+
+  return normalizeExtraction(
+    parseAIResponse(rawContent),
+    rawContent
+  );
+};
+
+const runWithRetry = async (label, handler) => {
+  let lastError;
+
+  for (let attempt = 0; attempt <= AI_RETRIES; attempt += 1) {
+    try {
+      return await handler();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < AI_RETRIES) {
+        await sleep(500 * (attempt + 1));
+      }
+    }
+  }
+
+  throw new Error(
+    `${label} failed: ${getErrorMessage(lastError)}`
+  );
+};
+
+const extractWithContext = async (
+  fileBuffer,
+  ocrText = '',
+  mimeType = 'image/jpeg'
+) => {
+  const providers = [];
+
+  if (OPENROUTER_API_KEY && OPENROUTER_MODEL && !isPdf(mimeType)) {
+    providers.push({
+      name: 'OpenRouter',
+      run: () =>
+        runWithRetry('OpenRouter', () =>
+          extractWithOpenRouter(fileBuffer, mimeType, ocrText)
+        ),
+    });
+  }
+
+  if (GEMINI_API_KEY) {
+    providers.push({
+      name: 'Gemini',
+      run: () =>
+        runWithRetry('Gemini', () =>
+          extractWithGemini(
+            fileBuffer,
+            mimeType,
+            ocrText,
+            GEMINI_MODEL
+          )
+        ),
+    });
+
+    if (GEMINI_FALLBACK_MODEL && GEMINI_FALLBACK_MODEL !== GEMINI_MODEL) {
+      providers.push({
+        name: 'Gemini fallback',
+        run: () =>
+          runWithRetry('Gemini fallback', () =>
+            extractWithGemini(
+              fileBuffer,
+              mimeType,
+              ocrText,
+              GEMINI_FALLBACK_MODEL
+            )
+          ),
+      });
+    }
+  }
+
+  if (providers.length === 0) {
+    throw new Error(
+      'No AI provider configured. Set OPENROUTER_API_KEY or GEMINI_API_KEY.'
+    );
+  }
+
+  let lastError;
+
+  for (const provider of providers) {
+    try {
+      return await provider.run();
+    } catch (error) {
+      lastError = error;
+      console.error(
+        `AI provider failed (${provider.name}):`,
+        getErrorMessage(error)
+      );
+    }
+  }
+
+  throw lastError;
+};
+
+module.exports = {
+  extractWithContext,
+};

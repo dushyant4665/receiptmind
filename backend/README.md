@@ -5,7 +5,7 @@ The backend is a small Express API that handles auth, receipt upload, extraction
 ## What It Does
 
 - Accepts uploads and stores files on disk
-- Extracts fields through OpenRouter, Gemini, and Tesseract fallback
+- Extracts fields through a small AI gateway with OpenRouter first and Gemini fallback
 - Validates, normalizes, and stores receipt data
 - Applies rules and creates exceptions
 - Serves receipt previews and CSV exports
@@ -57,11 +57,17 @@ Important variables:
 - `DATABASE_URL`
 - `JWT_SECRET`
 - `JWT_REFRESH_SECRET`
+- `OPENROUTER_API_KEY`
+- `OPENROUTER_MODEL`
+- `OPENROUTER_APP_NAME`
+- `OPENROUTER_APP_URL`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`
 - `GEMINI_FALLBACK_MODEL`
+- `AI_REQUEST_TIMEOUT_MS`
+- `AI_MAX_RETRIES`
 - `STORAGE_PATH`
 - `BASE_URL`
 - `FRONTEND_URL`

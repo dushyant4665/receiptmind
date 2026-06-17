@@ -8,6 +8,9 @@
     "frontend:dev": "npm run dev --prefix frontend",
     "frontend:build": "npm run build --prefix frontend",
     "frontend:start": "npm start --prefix frontend",
-    "install:all": "npm install --prefix backend && npm install --prefix frontend"
+    "gateway:dev": "npm run dev --prefix ai-gateway",
+    "gateway:build": "npm run build --prefix ai-gateway",
+    "gateway:start": "npm run start --prefix ai-gateway",
+    "install:all": "npm install --prefix backend && npm install --prefix frontend && npm install --prefix ai-gateway"
   }
 }
