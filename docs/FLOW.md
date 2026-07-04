@@ -1,8 +1,8 @@
 # Receipt Processing Flow
 
-This page shows the real backend flow from upload to final receipt state.
+This page describes the real receipt lifecycle in the backend, from upload to final receipt state.
 
-## End-to-End Flow
+## End-to-end flow
 
 ```mermaid
 sequenceDiagram
@@ -10,35 +10,32 @@ sequenceDiagram
     participant Frontend
     participant Backend
     participant Storage
-    participant Gateway
-    participant AI
+    participant AIService
     participant DB
 
-    User->>Frontend: Choose file and submit upload
+    User->>Frontend: Choose a receipt and submit
     Frontend->>Backend: POST /api/receipts/upload
     Backend->>Storage: Save file
-    Backend->>DB: Create receipt + processing job
+    Backend->>DB: Create receipt record
     Backend-->>Frontend: Return receipt id
-    Backend->>Gateway: Send extraction request
-    Gateway->>AI: Try OpenRouter first
-    alt OpenRouter succeeds
-        AI-->>Gateway: Structured JSON
+    Backend->>AIService: Extract structured fields
+    alt OpenRouter is available and succeeds
+        AIService-->>Backend: Structured JSON
     else OpenRouter fails
-        Gateway->>AI: Retry with Gemini
+        AIService->>AIService: Retry and fall back to Gemini
         alt Gemini succeeds
-            AI-->>Gateway: Structured JSON
-        else Gemini fails
-            Gateway->>AI: Fail over to Gemini fallback model
+            AIService-->>Backend: Structured JSON
+        else Gemini also fails
+            AIService-->>Backend: Error
         end
     end
-    Gateway-->>Backend: Structured JSON
     Backend->>Backend: Validate, normalize, apply rules
     Backend->>DB: Update receipt state
     Frontend->>Backend: Poll receipt details
     Backend-->>Frontend: processed / needs_review / failed
 ```
 
-## State Model
+## State model
 
 ```mermaid
 stateDiagram-v2
@@ -50,33 +47,33 @@ stateDiagram-v2
     needs_review --> processed: manual correction
 ```
 
-## High-Level Modules
+## High-level modules
 
 - `receiptController`: upload and receipt-facing HTTP endpoints
 - `authController`: registration, verification, password reset, and session flows
 - `emailService`: Brevo API integration for verification and password reset email
-- `receiptProcessingService`: queue orchestration and status transitions
-- `aiService`: receipt extraction fallback chain
-- `ai-gateway`: standalone TypeScript gateway with Axios retry and failover
-- `validationService`: field cleanup, normalization, confidence handling
+- `receiptProcessingService`: orchestrates file download, AI extraction, rules, and status transitions
+- `aiService`: receipt extraction fallback chain with timeout and retry handling
+- `ai-gateway/`: standalone TypeScript gateway for chat-style AI requests
+- `validationService`: field cleanup, normalization, and confidence handling
 - `ruleService`: business rule application
 - `exceptionService`: review issue creation
 - `fileController`: signed file preview endpoint
 - `exportController`: CSV export and export history
 - `storageService`: file save and file read operations
 
-## Failure Boundaries
+## Failure boundaries
 
 - Upload failure: request never creates a receipt record
-- Email provider failure: pending registration or reset token still exists, but the response reports `email_sent: false`
+- Email provider failure: the pending registration or reset token still exists, but the response reports `email_sent: false`
 - Extraction failure: receipt is stored but marked `failed`
 - Low-confidence extraction: receipt moves to `needs_review`
-- Provider outage: system falls through to the next extraction layer
+- Provider outage: the processor tries the next configured AI provider
 
-## Operational Summary
+## Operational summary
 
-- Storage is synchronous at upload time.
-- Extraction is asynchronous after the initial acknowledgement.
-- Frontend status updates are polling-based.
-- CSV export is independent of receipt extraction and reads persisted data from the database.
-- Verification and reset emails use Brevo's HTTPS API from the backend. On Render, Brevo may require the service outbound IP to be added under Security -> Authorised IPs.
+- Storage is synchronous at upload time
+- Extraction starts after the initial upload acknowledgement
+- Frontend status updates are polling-based
+- CSV export is independent of receipt extraction and reads persisted data from the database
+- Verification and reset emails use Brevo's HTTPS API from the backend

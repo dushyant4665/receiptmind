@@ -1,16 +1,16 @@
 # ReceiptMind Frontend
 
-The frontend is a Next.js App Router app for upload, review, rules, exceptions, and export workflows.
+This package is the Next.js App Router frontend for ReceiptMind. It gives users the screens to sign in, upload receipts, track processing, review exceptions, and export data.
 
-## Responsibilities
+## What it handles
 
-- Authenticate users
-- Submit receipt uploads
-- Poll receipt processing status
-- Render extracted data, confidence, and review states
-- Provide dashboards, filters, and export access
+- User authentication flows
+- Receipt upload and progress polling
+- Receipt detail views with extracted fields and confidence signals
+- Dashboard cards, filters, and review states
+- Export access and exception workflows
 
-## Folder Layout
+## Folder layout
 
 ```text
 frontend/
@@ -22,13 +22,13 @@ frontend/
 `- types/        # shared TypeScript types
 ```
 
-## Runtime Notes
+## Runtime notes
 
-- API calls are routed through `NEXT_PUBLIC_API_URL` or `BACKEND_API_URL`.
-- NextAuth uses the frontend's own `/api/auth/*` routes, so backend calls should stay on explicit backend URLs.
-- `output: "standalone"` is enabled for clean production builds.
+- API calls go through `NEXT_PUBLIC_API_URL` or `BACKEND_API_URL`
+- NextAuth uses the frontend's own `/api/auth/*` routes, so backend requests should use explicit backend URLs
+- `output: "standalone"` is enabled for production builds
 
-## Environment Variables
+## Environment variables
 
 Base configuration is documented in [`.env.example`](./.env.example).
 
@@ -42,14 +42,14 @@ Important variables:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
-## Local Run
+## Local run
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Vercel Deployment
+## Vercel deployment
 
 Recommended Vercel settings:
 
@@ -67,9 +67,9 @@ NEXT_PUBLIC_APP_URL=https://your-frontend.vercel.app
 NEXTAUTH_URL=https://your-frontend.vercel.app
 ```
 
-## Integration Boundary
+## Integration boundary
 
-The frontend should treat the backend as the single source of truth for:
+The frontend should treat the backend as the source of truth for:
 
 - receipt state
 - extraction output
