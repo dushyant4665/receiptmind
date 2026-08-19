@@ -37,7 +37,7 @@ const deleteFile = async (relativePath) => {
 
 // Generates public or API preview URL for uploaded receipt
 const getFileURL = (relativePath) => {
-  const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+  const baseUrl = process.env.BASE_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 3001}`;
   return `${baseUrl}/uploads/${relativePath.replace(/\\/g, '/')}`;
 };
 

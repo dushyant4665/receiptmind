@@ -31,9 +31,9 @@ services:
       - key: FRONTEND_URL
         sync: false
       - key: MISTRAL_API_KEY
-        value: VHc9KgTIhHBVVfVUiEG9d8nqShSoqrDk
+        sync: false
       - key: MISTRAL_MODEL
-        value: pixtral-12b-2409
+        value: mistral-ocr-4-1
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL

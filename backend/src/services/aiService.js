@@ -4,11 +4,11 @@ const { normalizeDate, normalizeAmount, normalizeVendor, normalizeCurrency } = r
 const { buildReceiptPrompt } = require('../utils/prompts');
 const { validateExtraction } = require('./validationService');
 
-const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || 'VHc9KgTIhHBVVfVUiEG9d8nqShSoqrDk';
-const MISTRAL_MODEL = process.env.MISTRAL_MODEL || 'pixtral-12b-2409';
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
-const TIMEOUT_MS = 45000;
+const MISTRAL_API_KEY = (process.env.MISTRAL_API_KEY || 'VHc9KgTIhHBVVfVUiEG9d8nqShSoqrDk').trim();
+const MISTRAL_MODEL = (process.env.MISTRAL_MODEL || 'mistral-ocr-4-1').trim();
+const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
+const GEMINI_MODEL = (process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim();
+const TIMEOUT_MS = Number(process.env.AI_REQUEST_TIMEOUT_MS) || 45000;
 
 // Preprocess image for optimal OCR and AI vision
 const preprocessImage = async (buffer) => {
