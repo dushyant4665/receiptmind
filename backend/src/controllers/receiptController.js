@@ -4,7 +4,8 @@ const db = require('../config/db');
 const storageService = require('../services/storageService');
 const receiptQueue = require('../queues/receiptQueue');
 const ruleService = require('../services/ruleService');
-const { quoteCsv, toIsoDate } = require('../utils/csv');
+const exceptionService = require('../services/exceptionService');
+const { quoteCsv, toIsoDate, toIsoDateTime } = require('../utils/csv');
 const { successResponse, errorResponse } = require('../utils/response');
 
 // 1. UPLOAD RECEIPT
@@ -52,7 +53,7 @@ const upload = async (req, res) => {
       [crypto.randomUUID(), organizationId, receiptId, storedPath, fileHash, req.file.size, req.file.mimetype]
     );
 
-    // Trigger processing pipeline
+    // Trigger processing pipeline (in-process async)
     await receiptQueue.add('process-receipt', { receiptId, filePath: storedPath, organizationId });
 
     return res.status(201).json(
@@ -90,7 +91,7 @@ const listReceipts = async (req, res) => {
       idx++;
     }
 
-    if (status) {
+    if (status && status !== 'all') {
       whereClause += ` AND r.status = $${idx}`;
       params.push(status);
       idx++;
@@ -153,10 +154,10 @@ const listReceipts = async (req, res) => {
     params.push(limit, offset);
     const { rows: receipts } = await db.query(listQuery, params);
 
-    // Ensure file_url is populated
+    // Ensure file_url is dynamically generated with current host
     const formattedReceipts = receipts.map((r) => ({
       ...r,
-      file_url: r.file_url || storageService.getFileURL(r.file_path),
+      file_url: storageService.getFileURL(r.file_path),
     }));
 
     return res.status(200).json(
@@ -207,7 +208,7 @@ const getReceipt = async (req, res) => {
     }
 
     const receipt = rows[0];
-    receipt.file_url = receipt.file_url || storageService.getFileURL(receipt.file_path);
+    receipt.file_url = storageService.getFileURL(receipt.file_path);
 
     return res.status(200).json(successResponse(receipt));
   } catch (error) {
@@ -219,7 +220,7 @@ const getReceipt = async (req, res) => {
 const editReceipt = async (req, res) => {
   const { id } = req.params;
   const { organizationId } = req.user;
-  const edits = req.validatedData || req.body;
+  const edits = req.validatedData || req.body || {};
 
   try {
     const { rows: existing } = await db.query(
@@ -244,13 +245,18 @@ const editReceipt = async (req, res) => {
 
     if (fields.length > 0) {
       fields.push(`updated_at = NOW()`);
-      // If manually edited, mark status as processed if it was needs_review
       fields.push(`status = 'processed'`);
       fields.push(`needs_review = false`);
 
       params.push(id, organizationId);
       const updateQuery = `UPDATE receipts SET ${fields.join(', ')} WHERE id = $${idx++} AND organization_id = $${idx} RETURNING *`;
       const { rows: updated } = await db.query(updateQuery, params);
+
+      // Resolve open exceptions for this receipt
+      await db.query(
+        `UPDATE exceptions SET status = 'resolved' WHERE receipt_id = $1 AND organization_id = $2`,
+        [id, organizationId]
+      );
 
       // Auto-learn rule if vendor or category changed
       const vendorName = edits.vendor_name || existing[0].vendor_name;
@@ -259,10 +265,14 @@ const editReceipt = async (req, res) => {
         ruleService.autoLearnFromEdit(organizationId, vendorName, category).catch(() => {});
       }
 
-      return res.status(200).json(successResponse(updated[0]));
+      const receipt = updated[0];
+      receipt.file_url = storageService.getFileURL(receipt.file_path);
+      return res.status(200).json(successResponse(receipt));
     }
 
-    return res.status(200).json(successResponse(existing[0]));
+    const receipt = existing[0];
+    receipt.file_url = storageService.getFileURL(receipt.file_path);
+    return res.status(200).json(successResponse(receipt));
   } catch (error) {
     console.error('Edit receipt error:', error.message);
     return res.status(500).json(errorResponse('Failed to update receipt'));
@@ -293,43 +303,48 @@ const deleteReceipt = async (req, res) => {
 // 6. BULK DELETE RECEIPTS
 const bulkDeleteReceipts = async (req, res) => {
   const { organizationId } = req.user;
-  const { receipt_ids } = req.validatedData || req.body;
+  const { ids } = req.validatedData || req.body || {};
 
-  if (!Array.isArray(receipt_ids) || receipt_ids.length === 0) {
-    return res.status(400).json(errorResponse('receipt_ids array is required'));
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json(errorResponse('ids array is required'));
   }
 
   try {
     await db.query(
-      `UPDATE receipts SET deleted_at = NOW() WHERE organization_id = $1 AND id = ANY($2::uuid[])`,
-      [organizationId, receipt_ids]
+      'UPDATE receipts SET deleted_at = NOW() WHERE id = ANY($1::uuid[]) AND organization_id = $2',
+      [ids, organizationId]
     );
 
-    return res.status(200).json(successResponse({ deleted_ids: receipt_ids }));
+    return res.status(200).json(successResponse({ deletedCount: ids.length }));
   } catch (error) {
-    return res.status(500).json(errorResponse('Failed to delete receipts'));
+    return res.status(500).json(errorResponse('Bulk delete failed'));
   }
 };
 
-// 7. BULK EXPORT RECEIPTS AS CSV
+// 7. BULK EXPORT RECEIPTS
 const bulkExportReceipts = async (req, res) => {
   const { organizationId } = req.user;
-  const { receipt_ids } = req.validatedData || req.body;
+  const { ids } = req.validatedData || req.body || {};
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json(errorResponse('ids array is required'));
+  }
 
   try {
     const { rows } = await db.query(
-      `SELECT id, vendor_name, amount, currency, category, receipt_date, confidence, status, created_at
+      `SELECT id, vendor_name, amount, currency, category, receipt_date, confidence, status, file_name, created_at
        FROM receipts
-       WHERE organization_id = $1 AND id = ANY($2::uuid[]) AND deleted_at IS NULL
+       WHERE id = ANY($1::uuid[]) AND organization_id = $2 AND deleted_at IS NULL
        ORDER BY created_at DESC`,
-      [organizationId, receipt_ids]
+      [ids, organizationId]
     );
 
+    const filename = `receipts_export_${new Date().toISOString().split('T')[0]}.csv`;
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=bulk_export_${new Date().toISOString().split('T')[0]}.csv`);
+    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
 
-    const headers = ['Receipt ID', 'Vendor', 'Amount', 'Currency', 'Category', 'Date', 'Confidence %', 'Status', 'Created At'];
-    let csv = headers.join(',') + '\n';
+    const header = ['Receipt ID', 'Vendor', 'Amount', 'Currency', 'Category', 'Date', 'Confidence', 'Status', 'File Name', 'Created At'];
+    let csv = header.join(',') + '\n';
 
     for (const r of rows) {
       const line = [
@@ -341,35 +356,37 @@ const bulkExportReceipts = async (req, res) => {
         toIsoDate(r.receipt_date || r.created_at),
         `${Math.round((r.confidence || 0) * 100)}%`,
         r.status,
-        toIsoDate(r.created_at),
+        quoteCsv(r.file_name || ''),
+        toIsoDateTime(r.created_at),
       ];
       csv += line.join(',') + '\n';
     }
 
     return res.send(csv);
   } catch (error) {
-    return res.status(500).json(errorResponse('Failed to export receipts'));
+    return res.status(500).json(errorResponse('Bulk export failed'));
   }
 };
 
-// 8. LIST EXPENSES (Processed receipts formatted for expense dashboard)
+// 8. LIST EXPENSES
 const listExpenses = async (req, res) => {
   const { organizationId } = req.user;
 
   try {
     const { rows } = await db.query(
-      `SELECT id, vendor_name, amount, currency,
-              COALESCE(receipt_date, created_at) as date,
-              category,
-              COALESCE(file_name, 'Receipt') as description,
-              'approved' as status
+      `SELECT id, vendor_name, amount, currency, category, receipt_date, status, confidence, file_name, file_path, created_at
        FROM receipts
-       WHERE organization_id = $1 AND deleted_at IS NULL
-       ORDER BY COALESCE(receipt_date, created_at) DESC`,
+       WHERE organization_id = $1 AND deleted_at IS NULL AND (status = 'processed' OR status = 'needs_review')
+       ORDER BY created_at DESC`,
       [organizationId]
     );
 
-    return res.status(200).json(successResponse(rows));
+    const expenses = rows.map((r) => ({
+      ...r,
+      file_url: storageService.getFileURL(r.file_path),
+    }));
+
+    return res.status(200).json(successResponse(expenses));
   } catch (error) {
     return res.status(500).json(errorResponse('Failed to list expenses'));
   }

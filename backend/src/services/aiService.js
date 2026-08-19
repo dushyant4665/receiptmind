@@ -5,7 +5,7 @@ const { buildReceiptPrompt } = require('../utils/prompts');
 const { validateExtraction } = require('./validationService');
 
 const MISTRAL_API_KEY = (process.env.MISTRAL_API_KEY || 'VHc9KgTIhHBVVfVUiEG9d8nqShSoqrDk').trim();
-const MISTRAL_MODEL = (process.env.MISTRAL_MODEL || 'mistral-ocr-4-1').trim();
+const MISTRAL_VISION_MODEL = (process.env.MISTRAL_MODEL || 'pixtral-12b-2409').trim();
 const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
 const GEMINI_MODEL = (process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim();
 const TIMEOUT_MS = Number(process.env.AI_REQUEST_TIMEOUT_MS) || 45000;
@@ -22,30 +22,37 @@ const preprocessImage = async (buffer) => {
   }
 };
 
-// Safe JSON parsing from AI responses
+// Safe JSON parsing from AI responses (handles wrapped objects & arrays)
 const parseJson = (content) => {
   if (!content) throw new Error('Empty AI response');
+  let parsed;
   try {
     const cleaned = content.replace(/```json/gi, '').replace(/```/g, '').trim();
-    return JSON.parse(cleaned);
+    parsed = JSON.parse(cleaned);
   } catch {
     const match = content.match(/\{[\s\S]*\}/);
     if (!match) throw new Error('Could not parse JSON from AI response');
-    return JSON.parse(match[0]);
+    parsed = JSON.parse(match[0]);
   }
+
+  if (Array.isArray(parsed)) return parsed[0] || {};
+  if (Array.isArray(parsed.receipt_data)) return parsed.receipt_data[0] || {};
+  if (parsed.receipt_data && typeof parsed.receipt_data === 'object') return parsed.receipt_data;
+  if (parsed.data && typeof parsed.data === 'object') return parsed.data;
+  return parsed;
 };
 
 // Normalize extracted receipt fields
 const normalizeResult = (parsed, rawResponse) => {
   const normalized = {
-    vendor_name: normalizeVendor(parsed.vendor_name || parsed.vendor || parsed.merchant_name || parsed.merchant),
-    amount: normalizeAmount(parsed.amount || parsed.total_amount || parsed.total),
+    vendor_name: normalizeVendor(parsed.vendor_name || parsed.vendor || parsed.merchant_name || parsed.merchant || parsed.store_name),
+    amount: normalizeAmount(parsed.amount || parsed.total_amount || parsed.total || parsed.total_paid),
     subtotal: normalizeAmount(parsed.subtotal),
     tax_amount: normalizeAmount(parsed.tax_amount || parsed.tax),
-    receipt_date: normalizeDate(parsed.receipt_date || parsed.date),
+    receipt_date: normalizeDate(parsed.receipt_date || parsed.date || parsed.transaction_date),
     currency: normalizeCurrency(parsed.currency),
     category: parsed.category || 'General',
-    invoice_number: parsed.invoice_number || '',
+    invoice_number: parsed.invoice_number || parsed.receipt_number || '',
     payment_method: parsed.payment_method || '',
     confidence: Number(parsed.confidence) || 0.85,
     raw_ai_response: rawResponse,
@@ -80,7 +87,7 @@ const extractWithMistral = async (base64Image, mimeType, ocrText) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: MISTRAL_MODEL,
+          model: MISTRAL_VISION_MODEL === 'mistral-ocr-4-1' ? 'pixtral-12b-2409' : MISTRAL_VISION_MODEL,
           messages: [
             {
               role: 'user',

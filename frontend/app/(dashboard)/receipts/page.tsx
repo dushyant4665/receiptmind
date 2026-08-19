@@ -21,8 +21,17 @@ const apiUrl = getApiUrl();
 
 function getReceiptImageSrc(url?: string) {
   if (!url) return "";
-  if (url.startsWith("data:") || url.startsWith("http://") || url.startsWith("https://")) return url;
-  return `${apiUrl}${url}`;
+  const currentApi = getApiUrl();
+  if (url.startsWith("data:")) return url;
+  if (url.includes("localhost:3001") || url.includes("127.0.0.1:3001")) {
+    const cleanPath = url.replace(/^https?:\/\/[^\/]+/, "");
+    return `${currentApi}${cleanPath}`;
+  }
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  if (url.startsWith("/uploads/") || url.startsWith("uploads/")) {
+    return `${currentApi}/${url.replace(/^\/+/, "")}`;
+  }
+  return `${currentApi}/uploads/${url}`;
 }
 
 function toDateInputValue(value?: string | null) {
