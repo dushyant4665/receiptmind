@@ -2,6 +2,7 @@ const db = require('../config/db');
 
 const runMigrations = async () => {
   const migrations = [
+    // Organizations
     `CREATE TABLE IF NOT EXISTS organizations (
       id UUID PRIMARY KEY,
       name TEXT NOT NULL,
@@ -10,6 +11,8 @@ const runMigrations = async () => {
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
       deleted_at TIMESTAMP WITH TIME ZONE
     )`,
+
+    // Users
     `CREATE TABLE IF NOT EXISTS users (
       id UUID PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,
@@ -22,6 +25,8 @@ const runMigrations = async () => {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
       deleted_at TIMESTAMP WITH TIME ZONE
     )`,
+
+    // Sessions
     `CREATE TABLE IF NOT EXISTS sessions (
       id UUID PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -34,9 +39,12 @@ const runMigrations = async () => {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )`,
+
     `CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`,
     `CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`,
     `CREATE INDEX IF NOT EXISTS idx_sessions_refresh_token ON sessions(refresh_token)`,
+
+    // Receipts
     `CREATE TABLE IF NOT EXISTS receipts (
       id UUID PRIMARY KEY,
       organization_id UUID NOT NULL REFERENCES organizations(id),
@@ -49,9 +57,13 @@ const runMigrations = async () => {
       processing_state TEXT NOT NULL DEFAULT 'queued',
       currency TEXT NOT NULL DEFAULT 'USD',
       amount NUMERIC,
+      subtotal NUMERIC,
+      tax_amount NUMERIC,
       vendor_name TEXT,
       receipt_date TIMESTAMP WITH TIME ZONE,
       category TEXT,
+      invoice_number TEXT,
+      payment_method TEXT,
       confidence DOUBLE PRECISION,
       validation_confidence DOUBLE PRECISION NOT NULL DEFAULT 0,
       final_confidence DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -76,8 +88,17 @@ const runMigrations = async () => {
       deleted_at TIMESTAMP WITH TIME ZONE,
       CONSTRAINT receipts_status_check CHECK (status IN ('pending', 'processing', 'processed', 'needs_review', 'failed', 'error'))
     )`,
+
+    // Ensure columns exist on receipts for backward compatibility
+    `ALTER TABLE receipts ADD COLUMN IF NOT EXISTS subtotal NUMERIC`,
+    `ALTER TABLE receipts ADD COLUMN IF NOT EXISTS tax_amount NUMERIC`,
+    `ALTER TABLE receipts ADD COLUMN IF NOT EXISTS invoice_number TEXT`,
+    `ALTER TABLE receipts ADD COLUMN IF NOT EXISTS payment_method TEXT`,
+
     `CREATE INDEX IF NOT EXISTS idx_receipts_org_created ON receipts(organization_id, created_at DESC)`,
     `CREATE INDEX IF NOT EXISTS idx_receipts_status ON receipts(status)`,
+
+    // Exceptions
     `CREATE TABLE IF NOT EXISTS exceptions (
       id UUID PRIMARY KEY,
       receipt_id UUID NOT NULL REFERENCES receipts(id) ON DELETE CASCADE,
@@ -88,9 +109,12 @@ const runMigrations = async () => {
       status TEXT NOT NULL DEFAULT 'open',
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )`,
+
     `CREATE INDEX IF NOT EXISTS idx_exceptions_org ON exceptions(organization_id)`,
     `CREATE INDEX IF NOT EXISTS idx_exceptions_receipt ON exceptions(receipt_id)`,
     `CREATE INDEX IF NOT EXISTS idx_exceptions_status ON exceptions(status)`,
+
+    // Rules
     `CREATE TABLE IF NOT EXISTS rules (
       id UUID PRIMARY KEY,
       organization_id UUID NOT NULL REFERENCES organizations(id),
@@ -101,7 +125,10 @@ const runMigrations = async () => {
       is_active BOOLEAN NOT NULL DEFAULT true,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )`,
+
     `CREATE INDEX IF NOT EXISTS idx_rules_org ON rules(organization_id)`,
+
+    // Rule Learning Events
     `CREATE TABLE IF NOT EXISTS rule_learning_events (
       id UUID PRIMARY KEY,
       organization_id UUID NOT NULL REFERENCES organizations(id),
@@ -109,7 +136,10 @@ const runMigrations = async () => {
       chosen_category TEXT NOT NULL,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )`,
+
     `CREATE INDEX IF NOT EXISTS idx_rule_learning_org_vendor ON rule_learning_events(organization_id, vendor)`,
+
+    // Vendor Aliases
     `CREATE TABLE IF NOT EXISTS vendor_aliases (
       id UUID PRIMARY KEY,
       organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -122,6 +152,8 @@ const runMigrations = async () => {
       deleted_at TIMESTAMP WITH TIME ZONE,
       UNIQUE (organization_id, normalized_alias)
     )`,
+
+    // Storage Objects
     `CREATE TABLE IF NOT EXISTS storage_objects (
       id UUID PRIMARY KEY,
       organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -133,6 +165,8 @@ const runMigrations = async () => {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
       deleted_at TIMESTAMP WITH TIME ZONE
     )`,
+
+    // Receipt Processing Jobs
     `CREATE TABLE IF NOT EXISTS receipt_processing_jobs (
       id UUID PRIMARY KEY,
       receipt_id UUID NOT NULL REFERENCES receipts(id) ON DELETE CASCADE,
@@ -147,6 +181,8 @@ const runMigrations = async () => {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )`,
+
+    // Export History
     `CREATE TABLE IF NOT EXISTS export_history (
       id UUID PRIMARY KEY,
       organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
@@ -157,6 +193,8 @@ const runMigrations = async () => {
       file_name TEXT,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )`,
+
+    // Pending Registrations (Email verification)
     `CREATE TABLE IF NOT EXISTS pending_registrations (
       id UUID,
       token_hash TEXT PRIMARY KEY,
@@ -166,17 +204,8 @@ const runMigrations = async () => {
       expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     )`,
-    `DO $$ BEGIN
-      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'pending_registrations') THEN
-        IF NOT EXISTS (
-          SELECT 1 FROM information_schema.table_constraints
-          WHERE table_name = 'pending_registrations' AND constraint_type = 'UNIQUE'
-          AND constraint_name = 'pending_registrations_email_key'
-        ) THEN
-          ALTER TABLE pending_registrations ADD CONSTRAINT pending_registrations_email_key UNIQUE (email);
-        END IF;
-      END IF;
-    END $$`,
+
+    // Password Reset Tokens
     `CREATE TABLE IF NOT EXISTS password_reset_tokens (
       id UUID PRIMARY KEY,
       user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -187,14 +216,8 @@ const runMigrations = async () => {
     )`,
   ];
 
-  for (const m of migrations) {
-    try {
-      await db.query(m);
-    } catch (err) {
-      console.error('Migration failed:', m);
-      console.error(err);
-      throw err;
-    }
+  for (const sql of migrations) {
+    await db.query(sql);
   }
   console.log('Database migrations completed successfully');
 };

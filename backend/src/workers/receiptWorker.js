@@ -1,63 +1,47 @@
-const {
-  Worker,
-} = require('bullmq');
+require('dotenv').config();
+const { Worker } = require('bullmq');
+const receiptProcessingService = require('../services/receiptProcessingService');
 
-const redis =
-  require('../config/redis');
+const redisUrl = process.env.REDIS_URL;
 
-const receiptProcessingService =
-  require('../services/receiptProcessingService');
+if (!redisUrl) {
+  console.log('BullMQ worker disabled (REDIS_URL not set). Queue will run in-process.');
+  module.exports = null;
+} else {
+  const IORedis = require('ioredis');
+  const connection = new IORedis(redisUrl, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+  });
 
-const worker =
-  new Worker(
+  // Log Redis connection errors so they don't silently kill the worker
+  connection.on('error', (err) => {
+    console.error('[Worker] Redis connection error:', err.message);
+  });
 
+  const worker = new Worker(
     'receipt-processing',
-
     async (job) => {
-
-      const {
-        receiptId,
-        filePath,
-        organizationId,
-      } = job.data;
-
-      console.log(
-        `Worker processing ${receiptId}`
-      );
-
-      await receiptProcessingService.processReceipt(
-        receiptId,
-        filePath,
-        organizationId
-      );
+      const { receiptId, filePath, organizationId } = job.data;
+      console.log(`[Worker] Processing job ${job.id} for receipt: ${receiptId}`);
+      await receiptProcessingService.processReceipt(receiptId, filePath, organizationId);
     },
-
-    {
-      connection: redis,
-
-      concurrency: 5,
-    }
+    { connection, concurrency: 5 }
   );
 
-worker.on(
-  'completed',
-  (job) => {
+  worker.on('completed', (job) => {
+    console.log(`[Worker] Job ${job.id} completed`);
+  });
 
-    console.log(
-      `Job ${job.id} completed`
-    );
-  }
-);
+  worker.on('failed', (job, err) => {
+    console.error(`[Worker] Job ${job?.id} failed:`, err.message);
+  });
 
-worker.on(
-  'failed',
-  (job, err) => {
+  // If Redis drops while worker is running — log and don't crash the process
+  worker.on('error', (err) => {
+    console.error('[Worker] Unexpected worker error:', err.message);
+  });
 
-    console.error(
-      `Job ${job.id} failed`,
-      err.message
-    );
-  }
-);
-
-module.exports = worker;
+  console.log('BullMQ Receipt Worker started (concurrency: 5)');
+  module.exports = worker;
+}

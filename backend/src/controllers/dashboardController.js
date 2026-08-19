@@ -5,42 +5,27 @@ const getStats = async (req, res) => {
   const { organizationId } = req.user;
 
   try {
-    const { rows: totalRows } = await db.query(
-      'SELECT COUNT(*) FROM receipts WHERE organization_id = $1',
+    const { rows } = await db.query(
+      `SELECT
+        COUNT(*) as total_receipts,
+        COALESCE(SUM(amount), 0) as total_amount,
+        COUNT(*) FILTER (WHERE status = 'processed') as processed_count,
+        COUNT(*) FILTER (WHERE status IN ('pending', 'processing')) as pending_count,
+        COUNT(*) FILTER (WHERE status = 'needs_review' OR needs_review = true) as needs_review_count
+       FROM receipts
+       WHERE organization_id = $1 AND deleted_at IS NULL`,
       [organizationId]
     );
-    const totalReceipts = parseInt(totalRows[0].count);
 
-    const { rows: amountRows } = await db.query(
-      "SELECT COALESCE(SUM(amount), 0) FROM receipts WHERE organization_id = $1 AND status = 'processed'",
-      [organizationId]
-    );
-    const totalAmount = parseFloat(amountRows[0].sum);
-
-    const { rows: processedRows } = await db.query(
-      "SELECT COUNT(*) FROM receipts WHERE organization_id = $1 AND status = 'processed'",
-      [organizationId]
-    );
-    const processedCount = parseInt(processedRows[0].count);
-
-    const { rows: pendingRows } = await db.query(
-      "SELECT COUNT(*) FROM receipts WHERE organization_id = $1 AND status IN ('pending', 'processing')",
-      [organizationId]
-    );
-    const pendingCount = parseInt(pendingRows[0].count);
-
-    const { rows: exceptionRows } = await db.query(
-      "SELECT COUNT(*) FROM exceptions WHERE organization_id = $1 AND status = 'open'",
-      [organizationId]
-    );
-    const needsReviewCount = parseInt(exceptionRows[0].count);
+    const row = rows[0] || {};
+    const totalReceipts = parseInt(row.total_receipts, 10) || 0;
+    const totalAmount = parseFloat(row.total_amount) || 0;
+    const processedCount = parseInt(row.processed_count, 10) || 0;
+    const pendingCount = parseInt(row.pending_count, 10) || 0;
+    const needsReviewCount = parseInt(row.needs_review_count, 10) || 0;
 
     const timeSavedMinutes = processedCount * 5;
-    let automationRate = 0;
-    if (totalReceipts > 0) {
-      const autoDone = processedCount - needsReviewCount;
-      automationRate = Math.max(0, autoDone) / totalReceipts;
-    }
+    const automationRate = totalReceipts > 0 ? Math.max(0, processedCount - needsReviewCount) / totalReceipts : 0;
 
     const stats = {
       total_receipts: totalReceipts,
@@ -52,10 +37,10 @@ const getStats = async (req, res) => {
       automation_rate: automationRate,
     };
 
-    res.json(successResponse(stats));
+    return res.status(200).json(successResponse(stats));
   } catch (error) {
-    console.error('Dashboard stats error:', error);
-    res.status(500).json(errorResponse('Internal server error'));
+    console.error('Dashboard stats error:', error.message);
+    return res.status(500).json(errorResponse('Failed to retrieve dashboard stats'));
   }
 };
 

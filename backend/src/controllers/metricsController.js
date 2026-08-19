@@ -5,56 +5,50 @@ const getProcessingTimes = async (req, res) => {
   const { organizationId } = req.user;
 
   try {
-    const query = `
-      SELECT 
-        EXTRACT(EPOCH FROM (processing_finished_at - processing_started_at)) as duration
-      FROM receipts 
-      WHERE organization_id = $1 
-        AND status = 'processed' 
-        AND processing_started_at IS NOT NULL 
-        AND processing_finished_at IS NOT NULL
-      ORDER BY processing_finished_at DESC
-      LIMIT 30
-    `;
+    const { rows } = await db.query(
+      `SELECT EXTRACT(EPOCH FROM (processing_finished_at - processing_started_at)) as duration
+       FROM receipts
+       WHERE organization_id = $1 AND status = 'processed'
+         AND processing_started_at IS NOT NULL AND processing_finished_at IS NOT NULL
+       ORDER BY processing_finished_at DESC
+       LIMIT 30`,
+      [organizationId]
+    );
 
-    const { rows } = await db.query(query, [organizationId]);
+    const count = rows.length;
+    if (count === 0) {
+      return res.status(200).json(
+        successResponse({
+          average_seconds: 0,
+          min_seconds: 0,
+          max_seconds: 0,
+          count: 0,
+        })
+      );
+    }
 
     let totalDuration = 0;
-    let minDuration = -1;
+    let minDuration = Infinity;
     let maxDuration = 0;
-    const count = rows.length;
 
     for (const row of rows) {
-      const duration = parseFloat(row.duration);
-      totalDuration += duration;
-      if (minDuration === -1 || duration < minDuration) {
-        minDuration = duration;
-      }
-      if (duration > maxDuration) {
-        maxDuration = duration;
-      }
+      const d = parseFloat(row.duration) || 0;
+      totalDuration += d;
+      if (d < minDuration) minDuration = d;
+      if (d > maxDuration) maxDuration = d;
     }
 
-    if (count === 0) {
-      return res.json(successResponse({
-        average_seconds: 0,
-        min_seconds: 0,
-        max_seconds: 0,
-        count: 0,
-      }));
-    }
-
-    const avg = totalDuration / count;
-
-    res.json(successResponse({
-      average_seconds: avg,
-      min_seconds: minDuration,
-      max_seconds: maxDuration,
-      count: count,
-    }));
+    return res.status(200).json(
+      successResponse({
+        average_seconds: Math.round((totalDuration / count) * 10) / 10,
+        min_seconds: Math.round(minDuration * 10) / 10,
+        max_seconds: Math.round(maxDuration * 10) / 10,
+        count,
+      })
+    );
   } catch (error) {
-    console.error('Get metrics error:', error);
-    res.status(500).json(errorResponse('Internal server error'));
+    console.error('Metrics processing times error:', error.message);
+    return res.status(500).json(errorResponse('Failed to calculate metrics'));
   }
 };
 
@@ -62,31 +56,24 @@ const getSummary = async (req, res) => {
   const { organizationId } = req.user;
 
   try {
-    const { rows: statusRows } = await db.query(
+    const { rows: receiptRows } = await db.query(
       `SELECT status, COUNT(*) as count FROM receipts WHERE organization_id = $1 GROUP BY status`,
       [organizationId]
     );
 
-    const { rows: exceptionRows } = await db.query(
+    const { rows: exRows } = await db.query(
       `SELECT status, COUNT(*) as count FROM exceptions WHERE organization_id = $1 GROUP BY status`,
       [organizationId]
     );
 
     const summary = {
-      receipts: statusRows.reduce((acc, row) => {
-        acc[row.status] = parseInt(row.count);
-        return acc;
-      }, {}),
-      exceptions: exceptionRows.reduce((acc, row) => {
-        acc[row.status] = parseInt(row.count);
-        return acc;
-      }, {}),
+      receipts: receiptRows.reduce((acc, r) => ({ ...acc, [r.status]: parseInt(r.count, 10) }), {}),
+      exceptions: exRows.reduce((acc, r) => ({ ...acc, [r.status]: parseInt(r.count, 10) }), {}),
     };
 
-    res.json(successResponse(summary));
+    return res.status(200).json(successResponse(summary));
   } catch (error) {
-    console.error('Get metrics summary error:', error);
-    res.status(500).json(errorResponse('Internal server error'));
+    return res.status(500).json(errorResponse('Failed to calculate summary'));
   }
 };
 

@@ -12,14 +12,8 @@ export const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   timeoutMs: toNumber(process.env.AI_REQUEST_TIMEOUT_MS, 45000),
   maxRetries: Math.max(0, toNumber(process.env.AI_MAX_RETRIES, 1)),
-  openRouterApiKey:
-    process.env.OPENROUTER_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    '',
-  openRouterModel:
-    process.env.OPENROUTER_MODEL ||
-    process.env.OPENAI_MODEL ||
-    'google/gemini-2.0-flash-001',
+  openRouterApiKey: process.env.OPENROUTER_API_KEY || '',
+  openRouterModel: process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001',
   openRouterAppName:
     process.env.OPENROUTER_APP_NAME || 'ReceiptMind AI Gateway',
   openRouterAppUrl:

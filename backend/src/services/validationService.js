@@ -1,112 +1,35 @@
+// Validates extracted fields and calculates confidence score
 const validateExtraction = (data) => {
+  let confidence = Number(data.confidence) || 0.85;
 
-  let confidence =
-    Number(data.confidence) || 0.85;
+  // Penalty for missing critical fields
+  if (!data.vendor_name) confidence -= 0.15;
+  if (!data.amount || data.amount <= 0) confidence -= 0.20;
+  if (!data.receipt_date) confidence -= 0.10;
 
-  /*
-    =================================
-    REQUIRED FIELD CHECKS
-    =================================
-  */
-
-  if (!data.vendor_name) {
-    confidence -= 0.10;
-  }
-
-  if (!data.amount || data.amount <= 0) {
-    confidence -= 0.15;
-  }
-
-  if (!data.receipt_date) {
-    confidence -= 0.10;
-  }
-
-  /*
-    =================================
-    TOTAL VALIDATION
-    subtotal + tax ~= amount
-    =================================
-  */
-
-  if (
-    data.subtotal > 0 &&
-    data.tax_amount >= 0 &&
-    data.amount > 0
-  ) {
-
-    const expected =
-      data.subtotal + data.tax_amount;
-
-    const difference =
-      Math.abs(
-        expected - data.amount
-      );
-
-    /*
-      ONLY penalize if
-      huge mismatch
-    */
-
-    if (difference > 20) {
-      confidence -= 0.08;
+  // Total arithmetic check (subtotal + tax ~= amount)
+  if (data.subtotal > 0 && data.tax_amount >= 0 && data.amount > 0) {
+    const expected = data.subtotal + data.tax_amount;
+    const diff = Math.abs(expected - data.amount);
+    if (diff > 20) {
+      confidence -= 0.10;
     }
   }
 
-  /*
-    =================================
-    BAD AMOUNT DETECTION
-    =================================
-  */
+  // Fallbacks
+  if (!data.category) data.category = 'General';
+  if (!data.currency) data.currency = 'USD';
 
-  if (
-    data.amount > 10000000
-  ) {
-    confidence -= 0.10;
-  }
+  // Clamp between 0 and 1
+  confidence = Math.max(0, Math.min(1, Math.round(confidence * 100) / 100));
 
-  /*
-    =================================
-    FALLBACKS
-    =================================
-  */
-
-  if (!data.category) {
-    data.category = 'General';
-  }
-
-  if (!data.currency) {
-    data.currency = 'INR';
-  }
-
-  /*
-    =================================
-    FINAL CLAMP
-    =================================
-  */
-
-  confidence =
-    Math.max(
-      0,
-      Math.min(1, confidence)
-    );
-
-  /*
-    =================================
-    REVIEW THRESHOLD
-    =================================
-  */
-
-  const needsReview =
-    confidence < 0.55;
+  // Flag for manual review if confidence is low or mandatory fields missing
+  const needsReview = confidence < 0.65 || !data.vendor_name || !data.amount;
 
   return {
-
     ...data,
-
     confidence,
-
-    needs_review:
-      needsReview,
+    needs_review: needsReview,
   };
 };
 

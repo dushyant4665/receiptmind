@@ -1,226 +1,50 @@
+require('dotenv').config();
 const fs = require('fs/promises');
-
 const path = require('path');
-
 const crypto = require('crypto');
 
-require('dotenv').config();
+const STORAGE_ROOT = path.resolve(process.env.STORAGE_PATH || path.join(__dirname, '../../uploads'));
 
-/*
-  ====================================
-  STORAGE ROOT
-  ====================================
-*/
+// Saves file buffer to disk under organization folder
+const uploadFile = async (buffer, originalFilename, organizationId) => {
+  const ext = path.extname(originalFilename).toLowerCase();
+  const orgDir = path.join(STORAGE_ROOT, organizationId);
+  await fs.mkdir(orgDir, { recursive: true });
 
-const STORAGE_ROOT =
-  process.env.STORAGE_PATH ||
-  path.join(__dirname, '../../storage');
+  const safeFilename = `${crypto.randomUUID()}${ext}`;
+  const fullPath = path.join(orgDir, safeFilename);
+  await fs.writeFile(fullPath, buffer);
 
-/*
-  ====================================
-  ENSURE DIRECTORY EXISTS
-  ====================================
-*/
-
-const ensureDirectoryExists =
-  async (dirPath) => {
-
-    await fs.mkdir(
-      dirPath,
-      {
-        recursive: true,
-      }
-    );
-  };
-
-/*
-  ====================================
-  SAFE FILE EXTENSION
-  ====================================
-*/
-
-const getSafeExtension =
-  (filename) => {
-
-    const ext =
-      path.extname(filename)
-        .toLowerCase();
-
-    const allowed = [
-      '.jpg',
-      '.jpeg',
-      '.png',
-      '.pdf',
-      '.webp',
-    ];
-
-    if (!allowed.includes(ext)) {
-      throw new Error(
-        'Unsupported file type'
-      );
-    }
-
-    return ext;
-  };
-
-/*
-  ====================================
-  UPLOAD FILE
-  ====================================
-*/
-
-const uploadFile = async (
-  buffer,
-  originalFilename,
-  organizationId
-) => {
-
-  /*
-    ================================
-    VALIDATE EXTENSION
-    ================================
-  */
-
-  const ext =
-    getSafeExtension(
-      originalFilename
-    );
-
-  /*
-    ================================
-    ORG DIRECTORY
-    ================================
-  */
-
-  const orgDirectory =
-    path.join(
-      STORAGE_ROOT,
-      organizationId
-    );
-
-  await ensureDirectoryExists(
-    orgDirectory
-  );
-
-  /*
-    ================================
-    GENERATE SAFE FILE NAME
-    ================================
-  */
-
-  const safeFilename =
-    `${crypto.randomUUID()}${ext}`;
-
-  /*
-    ================================
-    FULL FILE PATH
-    ================================
-  */
-
-  const fullPath =
-    path.join(
-      orgDirectory,
-      safeFilename
-    );
-
-  /*
-    ================================
-    WRITE FILE
-    ================================
-  */
-
-  await fs.writeFile(
-    fullPath,
-    buffer
-  );
-
-  /*
-    ================================
-    RELATIVE FILE PATH
-    ================================
-  */
-
-  const relativePath =
-    path.join(
-      organizationId,
-      safeFilename
-    );
-
-  return relativePath;
+  // Return relative path like "org-123/file.jpg"
+  return path.join(organizationId, safeFilename).replace(/\\/g, '/');
 };
 
-/*
-  ====================================
-  DOWNLOAD FILE
-  ====================================
-*/
-
-const downloadFile = async (
-  relativePath
-) => {
-
-  const normalized =
-    path.normalize(relativePath);
-
-  const fullPath =
-    path.join(
-      STORAGE_ROOT,
-      normalized
-    );
-
-  return await fs.readFile(
-    fullPath
-  );
+// Reads file buffer from storage
+const downloadFile = async (relativePath) => {
+  const fullPath = path.join(STORAGE_ROOT, relativePath);
+  return await fs.readFile(fullPath);
 };
 
-/*
-  ====================================
-  DELETE FILE
-  ====================================
-*/
-
-const deleteFile = async (
-  relativePath
-) => {
-
+// Deletes file from storage
+const deleteFile = async (relativePath) => {
   try {
-
-    const normalized =
-      path.normalize(relativePath);
-
-    const fullPath =
-      path.join(
-        STORAGE_ROOT,
-        normalized
-      );
-
+    const fullPath = path.join(STORAGE_ROOT, relativePath);
     await fs.unlink(fullPath);
-
   } catch (error) {
-
-    console.warn(
-      'Delete warning:',
-      error.message
-    );
+    console.warn('Storage delete warning:', error.message);
   }
 };
 
-/*
-  ====================================
-  SIGNED URL
-  ====================================
-*/
-
-const getSignedURL = async (
-  relativePath
-) => {
-
-  return `${process.env.BASE_URL}/uploads/${relativePath}`;
+// Generates public or API preview URL for uploaded receipt
+const getFileURL = (relativePath) => {
+  const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+  return `${baseUrl}/uploads/${relativePath.replace(/\\/g, '/')}`;
 };
 
 module.exports = {
   uploadFile,
   downloadFile,
   deleteFile,
-  getSignedURL,
+  getFileURL,
+  STORAGE_ROOT,
 };

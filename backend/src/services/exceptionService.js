@@ -1,84 +1,99 @@
-const db = require('../config/db');
 const crypto = require('crypto');
+const db = require('../config/db');
 
+// Evaluates receipt data and generates exceptions if issues are found
 const checkAndCreate = async (receiptId, organizationId, extraction) => {
   const exceptions = [];
 
   if (extraction.confidence < 0.75) {
-    exceptions.push({ 
-      type: 'low_confidence', 
-      field: 'confidence', 
-      message: `AI confidence is ${extraction.confidence.toFixed(2)}, below threshold 0.75` 
+    exceptions.push({
+      type: 'low_confidence',
+      field: 'confidence',
+      message: `AI confidence is ${(extraction.confidence * 100).toFixed(0)}%, which is below the 75% review threshold.`,
     });
   }
 
   if (!extraction.vendor_name) {
-    exceptions.push({ type: 'missing_field', field: 'vendor_name', message: 'Vendor name could not be extracted' });
+    exceptions.push({
+      type: 'missing_field',
+      field: 'vendor_name',
+      message: 'Vendor name could not be identified.',
+    });
   }
 
   if (!extraction.amount || extraction.amount <= 0) {
-    exceptions.push({ type: 'missing_field', field: 'amount', message: 'Amount could not be extracted or is zero' });
+    exceptions.push({
+      type: 'missing_field',
+      field: 'amount',
+      message: 'Total amount is missing or invalid.',
+    });
   }
 
   if (!extraction.receipt_date) {
-    exceptions.push({ type: 'missing_field', field: 'receipt_date', message: 'Receipt date could not be extracted' });
+    exceptions.push({
+      type: 'missing_field',
+      field: 'receipt_date',
+      message: 'Receipt date could not be parsed.',
+    });
   }
 
-  // Duplicate check
+  // Duplicate receipt check within 3 days
   if (extraction.vendor_name && extraction.amount > 0) {
     try {
-      const { rows: potentialDuplicates } = await db.query(
-        `SELECT id, amount FROM receipts 
+      const { rows: dups } = await db.query(
+        `SELECT id, amount FROM receipts
          WHERE organization_id = $1 AND vendor_name = $2 AND id != $3 AND status = 'processed'
          AND created_at > NOW() - INTERVAL '3 days'`,
         [organizationId, extraction.vendor_name, receiptId]
       );
 
-      for (const dup of potentialDuplicates) {
+      for (const dup of dups) {
         if (dup.amount > 0 && Math.abs(dup.amount - extraction.amount) / dup.amount <= 0.01) {
           exceptions.push({
             type: 'duplicate',
             field: 'amount',
-            message: `Possible duplicate of receipt ${dup.id} (same vendor, similar amount)`
+            message: `Possible duplicate of receipt ${dup.id.slice(0, 8)} (same vendor, matching amount).`,
           });
-          break; // Only need one duplicate exception
+          break;
         }
       }
-    } catch (error) {
-      console.error('Error checking duplicates:', error);
+    } catch (err) {
+      console.error('Duplicate check error:', err.message);
     }
   }
 
-  try {
-    for (const ex of exceptions) {
-      await db.query(
-        'INSERT INTO exceptions (id, receipt_id, organization_id, type, field, message, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [crypto.randomUUID(), receiptId, organizationId, ex.type, ex.field, ex.message, 'open']
-      );
-    }
-  } catch (error) {
-    console.error('Error creating exceptions:', error);
+  // Insert exceptions into database
+  for (const ex of exceptions) {
+    await db.query(
+      `INSERT INTO exceptions (id, receipt_id, organization_id, type, field, message, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'open')`,
+      [crypto.randomUUID(), receiptId, organizationId, ex.type, ex.field, ex.message]
+    );
   }
+
+  return exceptions;
 };
 
+// Resolves an exception
 const resolve = async (id, organizationId) => {
   await db.query(
-    "UPDATE exceptions SET status = 'resolved' WHERE id = $1 AND organization_id = $2",
+    `UPDATE exceptions SET status = 'resolved' WHERE id = $1 AND organization_id = $2`,
     [id, organizationId]
   );
 };
 
+// Lists exceptions for an organization
 const getByOrganization = async (organizationId, status) => {
-  let query = 'SELECT * FROM exceptions WHERE organization_id = $1';
+  let sql = 'SELECT * FROM exceptions WHERE organization_id = $1';
   const params = [organizationId];
 
   if (status) {
-    query += ' AND status = $2';
+    sql += ' AND status = $2';
     params.push(status);
   }
 
-  query += ' ORDER BY created_at DESC';
-  const { rows } = await db.query(query, params);
+  sql += ' ORDER BY created_at DESC';
+  const { rows } = await db.query(sql, params);
   return rows;
 };
 

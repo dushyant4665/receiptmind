@@ -1,168 +1,46 @@
 require('dotenv').config();
+const app = require('./app');
+const db = require('./config/db');
+const runMigrations = require('./db/migrations');
 
-/*
-  =====================================
-  APP
-  =====================================
-*/
+const PORT = process.env.PORT || 3001;
 
-const app =
-  require('./app');
-
-/*
-  =====================================
-  DATABASE
-  =====================================
-*/
-
-const db =
-  require('./config/db');
-
-/*
-  =====================================
-  WORKER
-  =====================================
-*/
-
-require('./workers/receiptWorker');
-
-/*
-  =====================================
-  PORT
-  =====================================
-*/
-
-const PORT =
-  process.env.PORT || 5000;
-
-/*
-  =====================================
-  START SERVER
-  =====================================
-*/
-
-const server =
-  app.listen(
-    PORT,
-    () => {
-
-      console.log(`
-=====================================
-ReceiptMind Backend Running
-=====================================
-
-PORT: ${PORT}
-ENV: ${process.env.NODE_ENV}
-
-=====================================
-`);
+// Start server after ensuring DB migrations are run
+const startServer = async () => {
+  try {
+    if (process.env.DATABASE_URL) {
+      console.log('Running database migrations...');
+      await runMigrations();
+    } else {
+      console.warn('DATABASE_URL not configured. Skipping migrations.');
     }
-  );
-
-/*
-  =====================================
-  UNHANDLED REJECTION
-  =====================================
-*/
-
-process.on(
-  'unhandledRejection',
-  (err) => {
-
-    console.error(
-      'Unhandled Rejection:',
-      err
-    );
-
-    shutdown();
+  } catch (err) {
+    console.error('Migration notice:', err.message);
   }
-);
 
-/*
-  =====================================
-  UNCAUGHT EXCEPTION
-  =====================================
-*/
+  const server = app.listen(PORT, () => {
+    console.log(`=====================================`);
+    console.log(`🚀 ReceiptMind Backend running on port ${PORT}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`=====================================`);
+  });
 
-process.on(
-  'uncaughtException',
-  (err) => {
-
-    console.error(
-      'Uncaught Exception:',
-      err
-    );
-
-    shutdown();
-  }
-);
-
-/*
-  =====================================
-  GRACEFUL SHUTDOWN
-  =====================================
-*/
-
-const shutdown =
-  async () => {
-
-    console.log(
-      'Gracefully shutting down...'
-    );
-
-    try {
-
-      /*
-        =============================
-        CLOSE HTTP SERVER
-        =============================
-      */
-
-      server.close();
-
-      /*
-        =============================
-        CLOSE DB POOL
-        =============================
-      */
-
-      await db.pool.end();
-
-      console.log(
-        'Shutdown complete'
-      );
-
-      process.exit(1);
-
-    } catch (error) {
-
-      console.error(
-        'Shutdown Error:',
-        error.message
-      );
-
-      process.exit(1);
-    }
+  // Graceful shutdown
+  const shutdown = async (signal) => {
+    console.log(`\nReceived ${signal}. Shutting down gracefully...`);
+    server.close(async () => {
+      try {
+        await db.pool.end();
+        console.log('Database pool closed. Exit complete.');
+        process.exit(0);
+      } catch {
+        process.exit(1);
+      }
+    });
   };
 
-/*
-  =====================================
-  SIGTERM
-  =====================================
-*/
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+};
 
-process.on(
-  'SIGTERM',
-  shutdown
-);
-
-/*
-  =====================================
-  SIGINT
-  =====================================
-*/
-
-process.on(
-  'SIGINT',
-  shutdown
-);
+startServer();

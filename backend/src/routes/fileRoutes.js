@@ -1,11 +1,10 @@
 const express = require('express');
-const ruleController = require('../controllers/ruleController');
+const fileController = require('../controllers/fileController');
 const authenticate = require('../middleware/auth');
 
 const router = express.Router();
 
 router.use(authenticate);
-router.get('/', ruleController.listRules);
-router.post('/', ruleController.createRule);
+router.get('/:id', fileController.getFile);
 
 module.exports = router;

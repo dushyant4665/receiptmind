@@ -1,173 +1,31 @@
-const express =
-  require('express');
+const express = require('express');
+const receiptController = require('../controllers/receiptController');
+const exportController = require('../controllers/exportController');
+const authenticate = require('../middleware/auth');
+const validateRequest = require('../middleware/validateRequest');
+const { upload } = require('../middleware/uploadMiddleware');
+const { editReceiptSchema, bulkDeleteSchema, bulkExportSchema } = require('../validators/receiptValidators');
 
-const receiptController =
-  require('../controllers/receiptController');
+const router = express.Router();
 
-const exportController =
-  require('../controllers/exportController');
-
-const authenticate =
-  require('../middleware/auth');
-
-const validateRequest =
-  require('../middleware/validateRequest');
-
-const {
-  upload,
-} = require('../middleware/uploadMiddleware');
-
-const {
-
-  editReceiptSchema,
-
-  bulkDeleteSchema,
-
-  bulkExportSchema,
-
-} = require('../validators/receiptValidators');
-
-const router =
-  express.Router();
-
-/*
-  =====================================
-  AUTH
-  =====================================
-*/
-
+// Require auth for all receipt endpoints
 router.use(authenticate);
 
-/*
-  =====================================
-  RECEIPT UPLOAD
-  =====================================
-*/
+// Receipt upload
+router.post('/upload', upload.single('file'), receiptController.upload);
 
-router.post(
+// Bulk operations
+router.post('/bulk/export', validateRequest(bulkExportSchema), receiptController.bulkExportReceipts);
+router.delete('/bulk', validateRequest(bulkDeleteSchema), receiptController.bulkDeleteReceipts);
 
-  '/upload',
+// Export shortcuts
+router.get('/export/csv', exportController.exportCSV);
+router.get('/exports/history', exportController.getHistory);
 
-  upload.single('file'),
+// CRUD
+router.get('/', receiptController.listReceipts);
+router.get('/:id', receiptController.getReceipt);
+router.patch('/:id', validateRequest(editReceiptSchema), receiptController.editReceipt);
+router.delete('/:id', receiptController.deleteReceipt);
 
-  receiptController.upload
-);
-
-/*
-  =====================================
-  BULK EXPORT
-  =====================================
-*/
-
-router.post(
-
-  '/bulk/export',
-
-  validateRequest(
-    bulkExportSchema
-  ),
-
-  receiptController.bulkExportReceipts
-);
-
-/*
-  =====================================
-  BULK DELETE
-  =====================================
-*/
-
-router.delete(
-
-  '/bulk',
-
-  validateRequest(
-    bulkDeleteSchema
-  ),
-
-  receiptController.bulkDeleteReceipts
-);
-
-/*
-  =====================================
-  EXPORT HISTORY
-  =====================================
-*/
-
-router.get(
-
-  '/exports/history',
-
-  exportController.getHistory
-);
-
-/*
-  =====================================
-  CSV EXPORT
-  =====================================
-*/
-
-router.get(
-
-  '/export/csv',
-
-  exportController.exportCSV
-);
-
-/*
-  =====================================
-  LIST RECEIPTS
-  =====================================
-*/
-
-router.get(
-
-  '/',
-
-  receiptController.listReceipts
-);
-
-/*
-  =====================================
-  GET SINGLE RECEIPT
-  =====================================
-*/
-
-router.get(
-
-  '/:id',
-
-  receiptController.getReceipt
-);
-
-/*
-  =====================================
-  EDIT RECEIPT
-  =====================================
-*/
-
-router.patch(
-
-  '/:id',
-
-  validateRequest(
-    editReceiptSchema
-  ),
-
-  receiptController.editReceipt
-);
-
-/*
-  =====================================
-  DELETE RECEIPT
-  =====================================
-*/
-
-router.delete(
-
-  '/:id',
-
-  receiptController.deleteReceipt
-);
-
-module.exports =
-  router;
+module.exports = router;

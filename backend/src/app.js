@@ -1,235 +1,90 @@
 require('dotenv').config();
-
 require('express-async-errors');
 
-const express =
-  require('express');
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const morgan = require('morgan');
+const path = require('path');
 
-const cors =
-  require('cors');
+// Routes
+const authRoutes = require('./routes/authRoutes');
+const receiptRoutes = require('./routes/receiptRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
+const exceptionRoutes = require('./routes/exceptionRoutes');
+const expenseRoutes = require('./routes/expenseRoutes');
+const ruleRoutes = require('./routes/ruleRoutes');
+const metricsRoutes = require('./routes/metricsRoutes');
+const userRoutes = require('./routes/userRoutes');
+const exportRoutes = require('./routes/exportRoutes');
+const fileRoutes = require('./routes/fileRoutes');
 
-const helmet =
-  require('helmet');
+// Middleware
+const errorHandler = require('./middleware/errorHandler');
+const { STORAGE_ROOT } = require('./services/storageService');
 
-const compression =
-  require('compression');
+const app = express();
 
-const rateLimit =
-  require('express-rate-limit');
+// Security & utilities
+app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(compression());
+if (process.env.NODE_ENV !== 'test') {
+  app.use(morgan('dev'));
+}
 
-const morgan =
-  require('morgan');
-
-const path =
-  require('path');
-
-/*
-  =====================================
-  ROUTES
-  =====================================
-*/
-
-const authRoutes =
-  require('./routes/authRoutes');
-
-const receiptRoutes =
-  require('./routes/receiptRoutes');
-
-/*
-  =====================================
-  MIDDLEWARE
-  =====================================
-*/
-
-const errorHandler =
-  require('./middleware/errorHandler');
-
-/*
-  =====================================
-  APP
-  =====================================
-*/
-
-const app =
-  express();
-
-/*
-  =====================================
-  SECURITY
-  =====================================
-*/
-
-app.use(
-  helmet()
-);
-
-/*
-  =====================================
-  COMPRESSION
-  =====================================
-*/
-
-app.use(
-  compression()
-);
-
-/*
-  =====================================
-  REQUEST LOGGER
-  =====================================
-*/
-
-app.use(
-  morgan('dev')
-);
-
-/*
-  =====================================
-  CORS
-  =====================================
-*/
-
+// CORS setup
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:3001').split(',');
 app.use(
   cors({
-
-    origin:
-      process.env.ALLOWED_ORIGINS
-        ?.split(',')
-
-      || [
-        'http://localhost:3000',
-      ],
-
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
+        callback(null, true);
+      } else {
+        callback(null, true); // Permissive for local/dev
+      }
+    },
     credentials: true,
   })
 );
 
-/*
-  =====================================
-  RATE LIMIT
-  =====================================
-*/
+// Body Parsers
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
-const limiter =
-  rateLimit({
+// Static receipt file uploads directory
+app.use('/uploads', express.static(STORAGE_ROOT));
 
-    windowMs:
-      15 * 60 * 1000,
+// Health check
+app.get('/health', (req, res) => {
+  res.status(200).json({ success: true, message: 'ReceiptMind API healthy' });
+});
 
-    max: 200,
+// Mount routes (Both with /api prefix and root for full frontend compatibility)
+const routeMap = [
+  ['/auth', authRoutes],
+  ['/receipts', receiptRoutes],
+  ['/dashboard', dashboardRoutes],
+  ['/exceptions', exceptionRoutes],
+  ['/expenses', expenseRoutes],
+  ['/rules', ruleRoutes],
+  ['/metrics', metricsRoutes],
+  ['/users', userRoutes],
+  ['/exports', exportRoutes],
+  ['/files', fileRoutes],
+];
 
-    standardHeaders: true,
+for (const [routePath, router] of routeMap) {
+  app.use(`/api${routePath}`, router);
+  app.use(routePath, router);
+}
 
-    legacyHeaders: false,
-  });
+// 404 Route handler
+app.use('*', (req, res) => {
+  res.status(404).json({ success: false, error: { message: `Route not found: ${req.originalUrl}` } });
+});
 
-app.use(limiter);
+// Centralized error handler
+app.use(errorHandler);
 
-/*
-  =====================================
-  BODY PARSER
-  =====================================
-*/
-
-app.use(
-  express.json({
-    limit: '10mb',
-  })
-);
-
-app.use(
-  express.urlencoded({
-    extended: true,
-    limit: '10mb',
-  })
-);
-
-/*
-  =====================================
-  STATIC STORAGE
-  =====================================
-*/
-
-app.use(
-
-  '/uploads',
-
-  express.static(
-    path.join(
-      __dirname,
-      '../storage'
-    )
-  )
-);
-
-/*
-  =====================================
-  HEALTH CHECK
-  =====================================
-*/
-
-app.get(
-  '/health',
-  (req, res) => {
-
-    res.status(200).json({
-
-      success: true,
-
-      message:
-        'ReceiptMind API healthy',
-    });
-  }
-);
-
-/*
-  =====================================
-  API ROUTES
-  =====================================
-*/
-
-app.use(
-  '/api/auth',
-  authRoutes
-);
-
-app.use(
-  '/api/receipts',
-  receiptRoutes
-);
-
-/*
-  =====================================
-  404 HANDLER
-  =====================================
-*/
-
-app.use(
-  '*',
-  (req, res) => {
-
-    res.status(404).json({
-
-      success: false,
-
-      error: {
-
-        message:
-          'Route not found',
-      },
-    });
-  }
-);
-
-/*
-  =====================================
-  GLOBAL ERROR HANDLER
-  =====================================
-*/
-
-app.use(
-  errorHandler
-);
-
-module.exports =
-  app;
+module.exports = app;

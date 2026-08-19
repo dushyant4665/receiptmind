@@ -1,43 +1,35 @@
+// Prompt used by AI to extract structured receipt data
 const buildReceiptPrompt = (ocrText = '') => `
-You are an enterprise-grade AI receipt extraction engine.
+You are an expert receipt & invoice data extraction engine.
+Analyze the image (and optional OCR text) and return a STRICT JSON object only.
 
-Analyze the uploaded receipt/invoice image carefully.
+Rules:
+- amount: Final total payable amount (number). Do not confuse subtotal with total.
+- subtotal: Subtotal before taxes if visible (number or 0).
+- tax_amount: Total tax/VAT/GST amount if visible (number or 0).
+- vendor_name: Store/Company name only, without address.
+- receipt_date: Date in YYYY-MM-DD format (or current date if not visible).
+- currency: ISO 3-letter currency code (e.g. USD, EUR, INR, GBP).
+- category: Standard expense category (e.g. Meals, Travel, Office Supplies, Software, Utilities, General).
+- invoice_number: Invoice / receipt reference number if visible (string or empty).
+- payment_method: Payment method like Cash, Visa, Mastercard, UPI, Amex (string or empty).
+- confidence: Extraction confidence score between 0.0 and 1.0.
 
-Return ONLY valid JSON.
-
-STRICT RULES:
-
-- amount = FINAL payable amount
-- do NOT confuse subtotal with total
-- vendor_name should contain ONLY company/shop name
-- vendor_name must NOT contain address
-- dates MUST be YYYY-MM-DD
-- confidence MUST be between 0 and 1
-- if uncertain use null
-- currency should be ISO code like INR, USD, EUR
-- category should be simple business category
-- extract invoice_number if visible
-- payment_method if available
-- use OCR text as primary context
-- image used as secondary verification
-
-VALID JSON FORMAT:
-
+JSON FORMAT:
 {
   "vendor_name": "",
   "amount": 0,
   "subtotal": 0,
   "tax_amount": 0,
   "receipt_date": "",
-  "currency": "",
-  "category": "",
+  "currency": "USD",
+  "category": "General",
   "invoice_number": "",
   "payment_method": "",
-  "confidence": 0
+  "confidence": 0.9
 }
 
-OCR TEXT:
-${ocrText}
+${ocrText ? `OCR CONTEXT:\n${ocrText}` : ''}
 `;
 
 module.exports = {

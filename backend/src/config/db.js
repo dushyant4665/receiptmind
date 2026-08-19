@@ -1,136 +1,39 @@
-const { Pool } =
-  require('pg');
-
 require('dotenv').config();
+const { Pool } = require('pg');
 
-/*
-  =====================================
-  POSTGRES CONNECTION POOL
-  =====================================
-*/
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+});
 
-const pool =
-  new Pool({
+pool.on('connect', () => {
+  console.log('PostgreSQL client connected');
+});
 
-    connectionString:
-      process.env.DATABASE_URL,
+pool.on('error', (err) => {
+  console.error('PostgreSQL pool error:', err.message);
+});
 
-    ssl:
-      process.env.NODE_ENV ===
-      'production'
-        ? {
-            rejectUnauthorized: false,
-          }
-        : false,
-
-    /*
-      =================================
-      POOL CONFIG
-      =================================
-    */
-
-    max: 20,
-
-    idleTimeoutMillis:
-      30000,
-
-    connectionTimeoutMillis:
-      10000,
-  });
-
-/*
-  =====================================
-  DATABASE EVENTS
-  =====================================
-*/
-
-pool.on(
-  'connect',
-  () => {
-
-    console.log(
-      'PostgreSQL connected'
-    );
-  }
-);
-
-pool.on(
-  'error',
-  (err) => {
-
-    console.error(
-      'PostgreSQL Pool Error:',
-      err.message
-    );
-  }
-);
-
-/*
-  =====================================
-  SAFE QUERY WRAPPER
-  =====================================
-*/
-
-const query = async (
-  text,
-  params = []
-) => {
-
-  const start =
-    Date.now();
-
+// Clean query helper with error logging and slow query detection
+const query = async (text, params = []) => {
+  const start = Date.now();
   try {
-
-    const result =
-      await pool.query(
-        text,
-        params
-      );
-
-    const duration =
-      Date.now() - start;
-
-    /*
-      Slow Query Logging
-    */
-
+    const result = await pool.query(text, params);
+    const duration = Date.now() - start;
     if (duration > 2000) {
-
-      console.warn(
-        `Slow Query (${duration}ms):`,
-        text
-      );
+      console.warn(`Slow Query (${duration}ms):`, text);
     }
-
     return result;
-
   } catch (error) {
-
-    console.error(
-      'Database Query Error:',
-      error.message
-    );
-
-    console.error(
-      'Failed Query:',
-      text
-    );
-
+    console.error('DB Query Error:', error.message, '| Query:', text);
     throw error;
   }
 };
 
-/*
-  =====================================
-  TRANSACTION HELPER
-  =====================================
-*/
-
-const getClient =
-  async () => {
-
-    return await pool.connect();
-  };
+const getClient = () => pool.connect();
 
 module.exports = {
   query,

@@ -1,104 +1,53 @@
+// Normalizes dates to YYYY-MM-DD format
 const normalizeDate = (value) => {
+  if (!value) return null;
+  const str = String(value).trim();
 
-  if (!value)
-    return null;
-
-  value = String(value)
-    .trim();
-
-  // Already ISO format
-  if (
-    /^\d{4}-\d{2}-\d{2}$/.test(value)
-  ) {
-    return value;
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
   }
 
-  const parts =
-    value.split(/[\/\-\.]/);
+  const parts = str.split(/[\/\-\.]/);
+  if (parts.length !== 3) return null;
 
-  if (parts.length !== 3)
-    return null;
-
-  let day;
-  let month;
-  let year;
-
-  // YYYY-MM-DD
+  let year, month, day;
   if (parts[0].length === 4) {
-
     [year, month, day] = parts;
-
   } else {
-
-    // DD-MM-YYYY
     [day, month, year] = parts;
   }
 
-  day =
-    String(day)
-      .padStart(2, '0');
-
-  month =
-    String(month)
-      .padStart(2, '0');
-
-  return `${year}-${month}-${day}`;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
 
+// Normalizes currency strings into clean numbers
 const normalizeAmount = (value) => {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === 'number') return isNaN(value) ? 0 : value;
 
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return 0;
-  }
-
-  const cleaned =
-    String(value)
-      .replace(/[₹,$€£]/g, '')
-      .replace(/,/g, '')
-      .replace(/\s+/g, '')
-      .trim();
-
-  const parsed =
-    parseFloat(cleaned);
-
-  if (isNaN(parsed))
-    return 0;
-
-  return parsed;
-};
-
-const normalizeVendor = (value) => {
-
-  if (!value)
-    return '';
-
-  return String(value)
-    .replace(/\s+/g, ' ')
+  // Remove currency symbols, commas, and whitespace
+  const cleaned = String(value)
+    .replace(/[₹€£$\s]/g, '')
+    .replace(/,/g, '')
     .trim();
+
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? 0 : parsed;
 };
 
+// Normalizes vendor strings (collapses multi-spaces)
+const normalizeVendor = (value) => {
+  if (!value) return '';
+  return String(value).replace(/\s+/g, ' ').trim();
+};
+
+// Normalizes currency symbols to ISO 3-letter codes
 const normalizeCurrency = (value) => {
-
-  if (!value)
-    return 'INR';
-
-  const currency =
-    String(value)
-      .toUpperCase()
-      .trim();
-
-  const mapping = {
-    'RS': 'INR',
-    'RUPEES': 'INR',
-    '₹': 'INR',
-    '$': 'USD',
-  };
-
-  return mapping[currency]
-    || currency;
+  if (!value) return 'USD';
+  const currency = String(value).toUpperCase().trim();
+  const map = { RS: 'INR', RUPEES: 'INR', '₹': 'INR', '$': 'USD', '€': 'EUR', '£': 'GBP' };
+  return map[currency] || currency;
 };
 
 module.exports = {

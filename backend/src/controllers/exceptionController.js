@@ -9,17 +9,16 @@ const listExceptions = async (req, res) => {
 
   try {
     const exceptions = await exceptionService.getByOrganization(organizationId, status);
-    res.json(successResponse(exceptions));
+    return res.status(200).json(successResponse(exceptions));
   } catch (error) {
-    console.error('List exceptions error:', error);
-    res.status(500).json(errorResponse('Internal server error'));
+    return res.status(500).json(errorResponse('Failed to list exceptions'));
   }
 };
 
 const resolveException = async (req, res) => {
   const { id } = req.params;
   const { organizationId } = req.user;
-  const { vendor_name, amount, receipt_date, category } = req.body;
+  const { vendor_name, amount, receipt_date, category } = req.body || {};
 
   try {
     const { rows } = await db.query(
@@ -27,52 +26,49 @@ const resolveException = async (req, res) => {
       [id, organizationId]
     );
 
-    const ex = rows[0];
-    if (!ex) {
+    if (rows.length === 0) {
       return res.status(404).json(errorResponse('Exception not found'));
     }
 
-    if (ex.status === 'resolved') {
-      return res.status(400).json(errorResponse('Exception already resolved'));
-    }
+    const ex = rows[0];
 
+    // If corrections provided, apply them to receipt
     const updates = [];
     const params = [];
-    let paramIdx = 1;
+    let idx = 1;
 
     if (vendor_name !== undefined) {
-      updates.push(`vendor_name = $${paramIdx++}`);
+      updates.push(`vendor_name = $${idx++}`);
       params.push(vendor_name);
     }
     if (amount !== undefined) {
-      updates.push(`amount = $${paramIdx++}`);
+      updates.push(`amount = $${idx++}`);
       params.push(amount);
     }
     if (category !== undefined) {
-      updates.push(`category = $${paramIdx++}`);
+      updates.push(`category = $${idx++}`);
       params.push(category);
     }
     if (receipt_date !== undefined) {
-      updates.push(`receipt_date = $${paramIdx++}`);
+      updates.push(`receipt_date = $${idx++}`);
       params.push(receipt_date);
     }
 
     if (updates.length > 0) {
+      updates.push(`status = 'processed'`, `needs_review = false`, `updated_at = NOW()`);
       params.push(ex.receipt_id);
-      const query = `UPDATE receipts SET ${updates.join(', ')} WHERE id = $${paramIdx}`;
-      await db.query(query, params);
+      await db.query(`UPDATE receipts SET ${updates.join(', ')} WHERE id = $${idx}`, params);
 
-      if (vendor_name !== undefined && category !== undefined) {
-        await ruleService.autoLearnFromEdit(organizationId, vendor_name, category);
+      if (vendor_name && category) {
+        ruleService.autoLearnFromEdit(organizationId, vendor_name, category).catch(() => {});
       }
     }
 
     await exceptionService.resolve(id, organizationId);
-
-    res.json(successResponse({ id, status: 'resolved' }));
+    return res.status(200).json(successResponse({ id, status: 'resolved' }));
   } catch (error) {
-    console.error('Resolve exception error:', error);
-    res.status(500).json(errorResponse('Internal server error'));
+    console.error('Resolve exception error:', error.message);
+    return res.status(500).json(errorResponse('Failed to resolve exception'));
   }
 };
 

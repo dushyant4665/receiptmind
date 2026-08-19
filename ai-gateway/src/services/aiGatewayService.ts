@@ -1,212 +1,82 @@
 import axios from 'axios';
-
 import { env } from '../config/env';
-import {
-  ChatMessage,
-  GenerateRequestBody,
-  GatewayResponse,
-  ProviderResult,
-} from '../types';
+import { ChatMessage, GenerateRequestBody, GatewayResponse, ProviderResult } from '../types';
 import { retryDelay, sleep } from '../lib/retry';
 
-type NormalizedMessages = ChatMessage[];
-
-const isRetryableAxiosError = (error: unknown) => {
-  if (!axios.isAxiosError(error)) {
-    return false;
-  }
-
-  if (!error.response) {
-    return true;
-  }
-
-  return [408, 429, 500, 502, 503, 504].includes(
-    error.response.status
-  );
+const isRetryableError = (error: unknown) => {
+  if (!axios.isAxiosError(error)) return false;
+  if (!error.response) return true;
+  return [408, 429, 500, 502, 503, 504].includes(error.response.status);
 };
 
-const createClient = (baseURL: string, headers: Record<string, string>) =>
-  axios.create({
-    baseURL,
-    timeout: env.timeoutMs,
-    headers,
-    validateStatus: (status) => status < 400,
-  });
-
-const openRouterClient = createClient('https://openrouter.ai', {
-  Authorization: `Bearer ${env.openRouterApiKey}`,
-  'Content-Type': 'application/json',
-  'HTTP-Referer': env.openRouterAppUrl,
-  'X-Title': env.openRouterAppName,
-});
-
-const geminiClient = createClient(
-  'https://generativelanguage.googleapis.com',
-  {
-    'Content-Type': 'application/json',
-  }
-);
-
-const normalizeMessages = (body: GenerateRequestBody): NormalizedMessages => {
-  if (body.messages?.length) {
-    return body.messages;
-  }
-
+const normalizeMessages = (body: GenerateRequestBody): ChatMessage[] => {
+  if (body.messages?.length) return body.messages;
   const prompt = body.prompt?.trim();
+  if (!prompt) throw new Error('prompt or messages are required');
+  return [{ role: 'user', content: prompt }];
+};
 
-  if (!prompt) {
-    throw new Error('prompt or messages are required');
-  }
+// Call OpenRouter
+const callOpenRouter = async (messages: ChatMessage[], body: GenerateRequestBody): Promise<ProviderResult> => {
+  if (!env.openRouterApiKey) throw new Error('Missing OPENROUTER_API_KEY');
 
-  return [
+  const response = await axios.post(
+    'https://openrouter.ai/api/v1/chat/completions',
     {
-      role: 'user',
-      content: prompt,
+      model: env.openRouterModel,
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      temperature: body.temperature ?? 0,
+      ...(typeof body.maxTokens === 'number' ? { max_tokens: body.maxTokens } : {}),
     },
-  ];
-};
-
-const toOpenRouterMessages = (messages: NormalizedMessages) =>
-  messages.map((message) => ({
-    role: message.role,
-    content: message.content,
-  }));
-
-const toGeminiPayload = (messages: NormalizedMessages) => {
-  const systemMessage = messages.find((message) => message.role === 'system');
-
-  const contents = messages
-    .filter((message) => message.role !== 'system')
-    .map((message) => ({
-      role: message.role === 'assistant' ? 'model' : 'user',
-      parts: [
-        {
-          text: message.content,
-        },
-      ],
-    }));
-
-  return {
-    ...(systemMessage
-      ? {
-          systemInstruction: {
-            parts: [
-              {
-                text: systemMessage.content,
-              },
-            ],
-          },
-        }
-      : {}),
-    contents,
-    generationConfig: {
-      temperature: 0,
-    },
-  };
-};
-
-const extractOpenRouterContent = (data: any) => {
-  const content = data?.choices?.[0]?.message?.content;
-
-  if (typeof content === 'string') {
-    return content;
-  }
-
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => (typeof part === 'string' ? part : part?.text || ''))
-      .join('');
-  }
-
-  throw new Error('Empty OpenRouter response');
-};
-
-const extractGeminiContent = (data: any) => {
-  const content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (typeof content !== 'string' || !content.trim()) {
-    throw new Error('Empty Gemini response');
-  }
-
-  return content;
-};
-
-const callWithRetry = async <T>(
-  label: string,
-  operation: () => Promise<T>
-) => {
-  let lastError: unknown;
-
-  for (let attempt = 0; attempt <= env.maxRetries; attempt += 1) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error;
-
-      if (attempt < env.maxRetries && isRetryableAxiosError(error)) {
-        await sleep(retryDelay(attempt));
-        continue;
-      }
-
-      throw error;
-    }
-  }
-
-  throw lastError instanceof Error
-    ? new Error(`${label} failed: ${lastError.message}`)
-    : new Error(`${label} failed`);
-};
-
-const callOpenRouter = async (
-  messages: NormalizedMessages,
-  body: GenerateRequestBody
-): Promise<ProviderResult> => {
-  if (!env.openRouterApiKey) {
-    throw new Error('Missing OPENROUTER_API_KEY');
-  }
-
-  const response = await openRouterClient.post('/api/v1/chat/completions', {
-    model: env.openRouterModel,
-    messages: toOpenRouterMessages(messages),
-    temperature: body.temperature ?? 0,
-    ...(typeof body.maxTokens === 'number'
-      ? { max_tokens: body.maxTokens }
-      : {}),
-  });
-
-  const content = extractOpenRouterContent(response.data);
-
-  return {
-    provider: 'openrouter',
-    model: env.openRouterModel,
-    content,
-    raw: response.data,
-  };
-};
-
-const callGemini = async (
-  messages: NormalizedMessages,
-  model: string,
-  body: GenerateRequestBody
-): Promise<ProviderResult> => {
-  if (!env.geminiApiKey) {
-    throw new Error('Missing GEMINI_API_KEY');
-  }
-
-  const response = await geminiClient.post(
-    `/v1beta/models/${model}:generateContent?key=${env.geminiApiKey}`,
     {
-      ...toGeminiPayload(messages),
-      generationConfig: {
-        temperature: body.temperature ?? 0,
-        ...(typeof body.maxTokens === 'number'
-          ? { maxOutputTokens: body.maxTokens }
-          : {}),
+      timeout: env.timeoutMs,
+      headers: {
+        Authorization: `Bearer ${env.openRouterApiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': env.openRouterAppUrl,
+        'X-Title': env.openRouterAppName,
       },
     }
   );
 
-  const content = extractGeminiContent(response.data);
+  const content = response.data?.choices?.[0]?.message?.content;
+  if (!content) throw new Error('Empty OpenRouter response');
+
+  return {
+    provider: 'openrouter',
+    model: env.openRouterModel,
+    content: typeof content === 'string' ? content : JSON.stringify(content),
+    raw: response.data,
+  };
+};
+
+// Call Gemini
+const callGemini = async (messages: ChatMessage[], model: string, body: GenerateRequestBody): Promise<ProviderResult> => {
+  if (!env.geminiApiKey) throw new Error('Missing GEMINI_API_KEY');
+
+  const systemMsg = messages.find((m) => m.role === 'system');
+  const chatMsgs = messages.filter((m) => m.role !== 'system');
+
+  const payload = {
+    ...(systemMsg ? { systemInstruction: { parts: [{ text: systemMsg.content }] } } : {}),
+    contents: chatMsgs.map((m) => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }],
+    })),
+    generationConfig: {
+      temperature: body.temperature ?? 0,
+      ...(typeof body.maxTokens === 'number' ? { maxOutputTokens: body.maxTokens } : {}),
+    },
+  };
+
+  const response = await axios.post(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.geminiApiKey}`,
+    payload,
+    { timeout: env.timeoutMs, headers: { 'Content-Type': 'application/json' } }
+  );
+
+  const content = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!content) throw new Error('Empty Gemini response');
 
   return {
     provider: 'gemini',
@@ -216,70 +86,59 @@ const callGemini = async (
   };
 };
 
-const runProviderChain = async (
-  providers: Array<() => Promise<ProviderResult>>
-) => {
-  let lastError: unknown;
-  let attempts = 0;
-
-  for (const provider of providers) {
+// Execute operation with retry
+const withRetry = async <T>(fn: () => Promise<T>): Promise<T> => {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= env.maxRetries; attempt++) {
     try {
-      attempts += 1;
-      const result = await callWithRetry('provider', provider);
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < env.maxRetries && isRetryableError(err)) {
+        await sleep(retryDelay(attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+};
+
+// Generate response with automated provider failover
+export const generateWithFailover = async (body: GenerateRequestBody): Promise<GatewayResponse> => {
+  const messages = normalizeMessages(body);
+  const start = Date.now();
+  const pref = body.provider || 'auto';
+
+  const chain = pref === 'gemini'
+    ? [
+        () => callGemini(messages, env.geminiModel, body),
+        () => callOpenRouter(messages, body),
+        () => callGemini(messages, env.geminiFallbackModel, body),
+      ]
+    : [
+        () => callOpenRouter(messages, body),
+        () => callGemini(messages, env.geminiModel, body),
+        () => callGemini(messages, env.geminiFallbackModel, body),
+      ];
+
+  let attempts = 0;
+  let lastError: unknown;
+
+  for (const callProvider of chain) {
+    try {
+      attempts++;
+      const result = await withRetry(callProvider);
       return {
-        result,
+        ...result,
         attempts,
+        latencyMs: Date.now() - start,
+        fallbackUsed: attempts > 1,
       };
-    } catch (error) {
-      lastError = error;
+    } catch (err) {
+      lastError = err;
     }
   }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new Error('All AI providers failed');
-};
-
-export const generateWithFailover = async (
-  body: GenerateRequestBody
-): Promise<GatewayResponse> => {
-  const messages = normalizeMessages(body);
-  const startedAt = Date.now();
-  const providerPreference = body.provider || 'auto';
-  const providerChainOrder =
-    providerPreference === 'openrouter'
-      ? ['openrouter', 'gemini', 'gemini-fallback']
-      : providerPreference === 'gemini'
-        ? ['gemini', 'openrouter', 'gemini-fallback']
-        : ['openrouter', 'gemini', 'gemini-fallback'];
-
-  const providerChain =
-    providerPreference === 'openrouter'
-      ? [
-          () => callOpenRouter(messages, body),
-          () => callGemini(messages, env.geminiModel, body),
-          () => callGemini(messages, env.geminiFallbackModel, body),
-        ]
-      : providerPreference === 'gemini'
-        ? [
-            () => callGemini(messages, env.geminiModel, body),
-            () => callOpenRouter(messages, body),
-            () => callGemini(messages, env.geminiFallbackModel, body),
-          ]
-        : [
-            () => callOpenRouter(messages, body),
-            () => callGemini(messages, env.geminiModel, body),
-            () => callGemini(messages, env.geminiFallbackModel, body),
-        ];
-
-  const { result, attempts } = await runProviderChain(providerChain);
-
-  return {
-    ...result,
-    attempts,
-    latencyMs: Date.now() - startedAt,
-    fallbackUsed:
-      providerChainOrder[0] !== result.provider ||
-      (providerPreference === 'auto' && result.provider !== 'openrouter'),
-  };
+  throw lastError instanceof Error ? lastError : new Error('All AI providers failed');
 };

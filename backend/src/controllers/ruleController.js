@@ -1,59 +1,46 @@
-const db = require('../config/db');
 const crypto = require('crypto');
+const db = require('../config/db');
 const { successResponse, errorResponse } = require('../utils/response');
-
-const VALID_CONDITION_TYPES = new Set(['vendor', 'category', 'amount_range']);
-const VALID_ACTION_TYPES = new Set(['set_category', 'ignore', 'recurring']);
-
-const createRule = async (req, res) => {
-  const { organizationId } = req.user;
-  const { condition_type, condition_value, action_type, action_value } = req.body;
-
-  if (!condition_type || !condition_value || !action_type || !action_value) {
-    return res.status(400).json(errorResponse('All fields are required: condition_type, condition_value, action_type, action_value'));
-  }
-
-  if (!VALID_CONDITION_TYPES.has(condition_type)) {
-    return res.status(400).json(errorResponse('Invalid condition_type. allowed: vendor, category, amount_range'));
-  }
-
-  if (!VALID_ACTION_TYPES.has(action_type)) {
-    return res.status(400).json(errorResponse('Invalid action_type. allowed: set_category, ignore, recurring'));
-  }
-
-  try {
-    const id = crypto.randomUUID();
-    const { rows } = await db.query(
-      `INSERT INTO rules (id, organization_id, condition_type, condition_value, action_type, action_value, is_active, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-       RETURNING *`,
-      [id, organizationId, condition_type, condition_value, action_type, action_value, true]
-    );
-
-    res.status(201).json(successResponse(rows[0]));
-  } catch (error) {
-    console.error('Create rule error:', error);
-    res.status(500).json(errorResponse('Internal server error'));
-  }
-};
 
 const listRules = async (req, res) => {
   const { organizationId } = req.user;
 
   try {
     const { rows } = await db.query(
-      'SELECT * FROM rules WHERE organization_id = $1 ORDER BY created_at DESC',
+      `SELECT * FROM rules WHERE organization_id = $1 ORDER BY created_at DESC`,
       [organizationId]
     );
-
-    res.json(successResponse(rows));
+    return res.status(200).json(successResponse(rows));
   } catch (error) {
-    console.error('List rules error:', error);
-    res.status(500).json(errorResponse('Internal server error'));
+    return res.status(500).json(errorResponse('Failed to list rules'));
+  }
+};
+
+const createRule = async (req, res) => {
+  const { organizationId } = req.user;
+  const { condition_type, condition_value, action_type, action_value } = req.body;
+
+  if (!condition_type || !condition_value || !action_type || !action_value) {
+    return res.status(400).json(errorResponse('All fields required: condition_type, condition_value, action_type, action_value'));
+  }
+
+  try {
+    const id = crypto.randomUUID();
+    const { rows } = await db.query(
+      `INSERT INTO rules (id, organization_id, condition_type, condition_value, action_type, action_value, is_active, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, true, NOW())
+       RETURNING *`,
+      [id, organizationId, condition_type, condition_value, action_type, action_value]
+    );
+
+    return res.status(201).json(successResponse(rows[0]));
+  } catch (error) {
+    console.error('Create rule error:', error.message);
+    return res.status(500).json(errorResponse('Failed to create rule'));
   }
 };
 
 module.exports = {
-  createRule,
   listRules,
+  createRule,
 };

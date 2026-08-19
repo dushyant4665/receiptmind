@@ -1,316 +1,114 @@
 const db = require('../config/db');
+const storageService = require('./storageService');
+const aiService = require('./aiService');
+const ocrService = require('./ocrService');
+const ruleService = require('./ruleService');
+const exceptionService = require('./exceptionService');
+const crypto = require('crypto');
 
-const storageService =
-  require('./storageService');
-
-const aiService =
-  require('./aiService');
-
-const ruleService =
-  require('./ruleService');
-
-const exceptionService =
-  require('./exceptionService');
-
-/*
-  =====================================
-  UPDATE PROCESSING STATUS
-  =====================================
-*/
-
-const updateReceiptStatus = async (
-  receiptId,
-  status,
-  processingState
-) => {
-
-  await db.query(
-    `
-      UPDATE receipts
-      SET
-        status = $1,
-        processing_state = $2,
-        updated_at = NOW()
-      WHERE id = $3
-    `,
-    [
-      status,
-      processingState,
-      receiptId,
-    ]
-  );
+// Detects mime type from file path extension
+const getMimeType = (filePath) => {
+  const ext = filePath.toLowerCase();
+  if (ext.endsWith('.png')) return 'image/png';
+  if (ext.endsWith('.webp')) return 'image/webp';
+  if (ext.endsWith('.pdf')) return 'application/pdf';
+  return 'image/jpeg';
 };
 
-/*
-  =====================================
-  SAVE EXTRACTION RESULTS
-  =====================================
-*/
-
-const saveExtractionResults = async (
-  receiptId,
-  extraction
-) => {
-
-  const needsReview =
-    extraction.needs_review;
-
-  const finalStatus =
-    needsReview
-      ? 'needs_review'
-      : 'processed';
-
-  await db.query(
-    `
-      UPDATE receipts
-      SET
-
-        status = $1,
-        processing_state = $2,
-
-        vendor_name = $3,
-        amount = $4,
-        subtotal = $5,
-        tax_amount = $6,
-
-        receipt_date = $7,
-        currency = $8,
-        category = $9,
-
-        invoice_number = $10,
-        payment_method = $11,
-
-        confidence = $12,
-        validation_confidence = $13,
-        final_confidence = $14,
-
-        raw_extraction = $15,
-        ai_output = $16,
-
-        needs_review = $17,
-
-        processing_finished_at = NOW(),
-        updated_at = NOW()
-
-      WHERE id = $18
-    `,
-    [
-
-      finalStatus,
-      finalStatus,
-
-      extraction.vendor_name,
-      extraction.amount,
-      extraction.subtotal,
-      extraction.tax_amount,
-
-      extraction.receipt_date,
-      extraction.currency,
-      extraction.category,
-
-      extraction.invoice_number,
-      extraction.payment_method,
-
-      extraction.confidence,
-      extraction.confidence,
-      extraction.confidence,
-
-      extraction,
-      {
-        raw_response:
-          extraction.raw_ai_response,
-      },
-
-      needsReview,
-
-      receiptId,
-    ]
-  );
-
-  return finalStatus;
-};
-
-/*
-  =====================================
-  MAIN PROCESSOR
-  =====================================
-*/
-
-const processReceipt = async (
-  receiptId,
-  filePath,
-  organizationId
-) => {
-
-  console.log(
-    `Processing receipt ${receiptId}`
-  );
+// Main processing pipeline for an uploaded receipt
+const processReceipt = async (receiptId, filePath, organizationId) => {
+  console.log(`[Processing Pipeline] Starting receipt: ${receiptId}`);
 
   try {
-
-    /*
-      ================================
-      SET PROCESSING STATUS
-      ================================
-    */
-
-    await updateReceiptStatus(
-      receiptId,
-      'processing',
-      'processing'
-    );
-
-    /*
-      ================================
-      DOWNLOAD FILE
-      ================================
-    */
-
-    const fileBuffer =
-      await storageService.downloadFile(
-        filePath
-      );
-
-    /*
-      ================================
-      MIME DETECTION
-      ================================
-    */
-
-    const ext =
-      filePath.toLowerCase();
-
-    let mimeType =
-      'image/jpeg';
-
-    if (ext.endsWith('.png')) {
-      mimeType = 'image/png';
-    }
-
-    if (ext.endsWith('.pdf')) {
-      mimeType =
-        'application/pdf';
-    }
-
-    if (ext.endsWith('.webp')) {
-      mimeType = 'image/webp';
-    }
-
-    /*
-      ================================
-      AI EXTRACTION
-      ================================
-    */
-
-    const extraction =
-      await aiService.extractWithContext(
-        fileBuffer,
-        '',
-        mimeType
-      );
-
-    /*
-      ================================
-      APPLY RULE ENGINE
-      ================================
-    */
-
-    const finalExtraction =
-      await ruleService.applyRules(
-        organizationId,
-        extraction
-      );
-
-    /*
-      ================================
-      SAVE RESULTS
-      ================================
-    */
-
-    const finalStatus =
-      await saveExtractionResults(
-        receiptId,
-        finalExtraction
-      );
-
-    /*
-      ================================
-      EXCEPTION SYSTEM
-      ================================
-    */
-
-    await exceptionService.checkAndCreate(
-      receiptId,
-      organizationId,
-      finalExtraction
-    );
-
-    console.log(
-      `Receipt ${receiptId} completed`
-    );
-
-    return {
-      success: true,
-      status: finalStatus,
-    };
-
-  } catch (error) {
-
-    console.error(
-      `Receipt Processing Error:`,
-      error.message
-    );
-
-    /*
-      ================================
-      FAILED STATUS
-      ================================
-    */
-
+    // 1. Mark status as processing
     await db.query(
-      `
-        UPDATE receipts
-        SET
-          status = 'failed',
-          processing_state = 'failed',
-          updated_at = NOW()
-        WHERE id = $1
-      `,
+      `UPDATE receipts
+       SET status = 'processing', processing_state = 'processing', processing_started_at = NOW(), updated_at = NOW()
+       WHERE id = $1`,
       [receiptId]
     );
 
-    /*
-      ================================
-      EXCEPTION RECORD
-      ================================
-    */
+    // 2. Read file from storage
+    const fileBuffer = await storageService.downloadFile(filePath);
+    const mimeType = getMimeType(filePath);
 
+    // 3. Extract OCR text (if image)
+    const ocrText = await ocrService.extractText(fileBuffer, mimeType);
+
+    // 4. AI Extraction with multi-provider failover
+    const aiExtraction = await aiService.extractWithContext(fileBuffer, ocrText, mimeType);
+
+    // 5. Apply business rules and vendor aliases
+    const finalExtraction = await ruleService.applyRules(organizationId, aiExtraction);
+
+    // 6. Check for exceptions (low confidence, missing data, duplicates)
+    const exceptions = await exceptionService.checkAndCreate(receiptId, organizationId, finalExtraction);
+
+    // 7. Decide final receipt status
+    const hasOpenExceptions = exceptions.length > 0;
+    const finalStatus = hasOpenExceptions || finalExtraction.needs_review ? 'needs_review' : 'processed';
+
+    // 8. Update receipt record in database
     await db.query(
-      `
-        INSERT INTO exceptions (
-          id,
-          receipt_id,
-          organization_id,
-          type,
-          field,
-          message,
-          status
-        )
-        VALUES (
-          gen_random_uuid(),
-          $1,
-          $2,
-          'processing_error',
-          'system',
-          $3,
-          'open'
-        )
-      `,
+      `UPDATE receipts
+       SET
+         status = $1,
+         processing_state = $1,
+         vendor_name = $2,
+         amount = $3,
+         subtotal = $4,
+         tax_amount = $5,
+         receipt_date = $6,
+         currency = $7,
+         category = $8,
+         invoice_number = $9,
+         payment_method = $10,
+         confidence = $11,
+         validation_confidence = $11,
+         final_confidence = $11,
+         raw_extraction = $12,
+         ai_output = $13,
+         needs_review = $14,
+         processing_finished_at = NOW(),
+         updated_at = NOW()
+       WHERE id = $15`,
       [
+        finalStatus,
+        finalExtraction.vendor_name || null,
+        finalExtraction.amount || 0,
+        finalExtraction.subtotal || 0,
+        finalExtraction.tax_amount || 0,
+        finalExtraction.receipt_date || null,
+        finalExtraction.currency || 'USD',
+        finalExtraction.category || 'General',
+        finalExtraction.invoice_number || null,
+        finalExtraction.payment_method || null,
+        finalExtraction.confidence || 0,
+        JSON.stringify(finalExtraction),
+        JSON.stringify({ raw_response: finalExtraction.raw_ai_response || '' }),
+        finalStatus === 'needs_review',
         receiptId,
-        organizationId,
-        error.message,
       ]
+    );
+
+    console.log(`[Processing Pipeline] Completed receipt ${receiptId} -> Status: ${finalStatus}`);
+    return { success: true, status: finalStatus };
+  } catch (error) {
+    console.error(`[Processing Pipeline] Error on receipt ${receiptId}:`, error.message);
+
+    // Update receipt status to failed
+    await db.query(
+      `UPDATE receipts
+       SET status = 'failed', processing_state = 'failed', processing_finished_at = NOW(), updated_at = NOW()
+       WHERE id = $1`,
+      [receiptId]
+    );
+
+    // Create system error exception
+    await db.query(
+      `INSERT INTO exceptions (id, receipt_id, organization_id, type, field, message, status)
+       VALUES ($1, $2, $3, 'processing_error', 'system', $4, 'open')`,
+      [crypto.randomUUID(), receiptId, organizationId, error.message]
     );
 
     throw error;

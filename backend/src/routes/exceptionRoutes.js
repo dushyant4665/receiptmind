@@ -5,7 +5,6 @@ const authenticate = require('../middleware/auth');
 const router = express.Router();
 
 router.use(authenticate);
-
 router.get('/', exceptionController.listExceptions);
 router.post('/:id/resolve', exceptionController.resolveException);
 
