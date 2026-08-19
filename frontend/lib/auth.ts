@@ -65,7 +65,8 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Invalid credentials payload.");
         }
 
-        const response = await fetch(`${API_URL}/auth/login`, {
+        const apiUrl = getApiUrl();
+        const response = await fetch(`${apiUrl}/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(parsed.data),

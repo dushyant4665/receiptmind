@@ -33,17 +33,10 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
 
-// CORS setup
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:3001').split(',');
+// CORS setup - fully permissive with credentials support for Vercel & local
 app.use(
   cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV === 'development') {
-        callback(null, true);
-      } else {
-        callback(null, true); // Permissive for local/dev
-      }
-    },
+    origin: true,
     credentials: true,
   })
 );

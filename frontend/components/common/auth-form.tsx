@@ -11,10 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getApiUrl } from "@/lib/env";
 
 const authSchema = z.object({
   mode: z.enum(["login", "signup"]),
-  email: z.email(),
+  email: z.string().email(),
   password: z.string().min(8, "Password must be at least 8 characters."),
   name: z.string().optional(),
   companyName: z.string().optional(),
@@ -28,23 +29,64 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     resolver: zodResolver(authSchema),
     defaultValues: {
       mode,
-      name: "Alex Mercer",
-      companyName: "ReceiptMind Labs",
-      email: "alex@receiptmind.ai",
-      password: "Password123!",
+      name: "",
+      companyName: "",
+      email: "",
+      password: "",
     },
   });
 
   const onSubmit = form.handleSubmit(async (values) => {
+    // ── SIGNUP ──────────────────────────────────────────────
     if (mode === "signup") {
       if (!values.name || !values.companyName) {
         toast.error("Name and company name are required.");
         return;
       }
-      toast.success("Workspace draft created. Use the backend signup endpoint to persist users.");
+
+      try {
+        const res = await fetch(`${getApiUrl()}/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: values.name,
+            email: values.email,
+            password: values.password,
+            organization_name: values.companyName,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          toast.error(data?.error?.message || data?.error || "Registration failed.");
+          return;
+        }
+
+        toast.success("Account created! Signing you in...");
+
+        // Auto sign-in after registration
+        const result = await signIn("credentials", {
+          email: values.email,
+          password: values.password,
+          redirect: false,
+          callbackUrl: "/dashboard",
+        });
+
+        if (result?.error) {
+          toast.error("Account created, please sign in manually.");
+          router.push("/login");
+          return;
+        }
+
+        router.push("/dashboard");
+      } catch (err) {
+        toast.error("Unable to connect to the server. Please try again.");
+      }
       return;
     }
 
+    // ── LOGIN ────────────────────────────────────────────────
     const result = await signIn("credentials", {
       ...values,
       redirect: false,
@@ -52,11 +94,11 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     });
 
     if (result?.error) {
-      toast.error(result.error);
+      toast.error(result.error === "CredentialsSignin" ? "Invalid email or password." : result.error);
       return;
     }
 
-    toast.success("Welcome back. Redirecting to your dashboard.");
+    toast.success("Welcome back. Redirecting...");
     router.push("/dashboard");
   });
 
@@ -78,24 +120,24 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
             <>
               <div className="grid gap-2">
                 <Label htmlFor="name" className="text-sm">Full name</Label>
-                <Input id="name" {...form.register("name")} />
+                <Input id="name" placeholder="Alex Mercer" {...form.register("name")} />
                 <p className="text-xs text-red">{form.formState.errors.name?.message}</p>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="companyName" className="text-sm">Company name</Label>
-                <Input id="companyName" {...form.register("companyName")} />
+                <Input id="companyName" placeholder="Acme Corp" {...form.register("companyName")} />
                 <p className="text-xs text-red">{form.formState.errors.companyName?.message}</p>
               </div>
             </>
           )}
           <div className="grid gap-2">
             <Label htmlFor="email" className="text-sm">Work email</Label>
-            <Input id="email" type="email" {...form.register("email")} />
+            <Input id="email" type="email" placeholder="you@company.com" {...form.register("email")} />
             <p className="text-xs text-red">{form.formState.errors.email?.message}</p>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="password" className="text-sm">Password</Label>
-            <Input id="password" type="password" {...form.register("password")} />
+            <Input id="password" type="password" placeholder="Min 8 characters" {...form.register("password")} />
             <p className="text-xs text-red">{form.formState.errors.password?.message}</p>
           </div>
           <Button className="w-full bg-ink text-white hover:opacity-85" disabled={form.formState.isSubmitting}>

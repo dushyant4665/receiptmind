@@ -8,10 +8,16 @@ const { successResponse, errorResponse } = require('../utils/response');
 // 1. REGISTER
 const register = async (req, res) => {
   try {
-    const { name = '', email, password, organization_name } = req.validatedData;
+    const data = req.validatedData || req.body || {};
+    const { name = '', email, password } = data;
+    const orgName = data.organization_name || data.companyName || data.company_name || `${(name || email.split('@')[0]).trim()}'s Workspace`;
+
+    if (!email || !password) {
+      return res.status(400).json(errorResponse('Email and password are required'));
+    }
 
     // Check if email already registered
-    const { rows: existing } = await db.query('SELECT id FROM users WHERE email = $1 LIMIT 1', [email]);
+    const { rows: existing } = await db.query('SELECT id FROM users WHERE email = $1 LIMIT 1', [email.toLowerCase().trim()]);
     if (existing.length > 0) {
       return res.status(409).json(errorResponse('Email already registered'));
     }
@@ -21,22 +27,22 @@ const register = async (req, res) => {
     const userId = crypto.randomUUID();
 
     // Create Organization
-    const slug = organization_name.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + crypto.randomBytes(3).toString('hex');
+    const slug = orgName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + crypto.randomBytes(3).toString('hex');
     await db.query(
       `INSERT INTO organizations (id, name, slug, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())`,
-      [orgId, organization_name, slug]
+      [orgId, orgName, slug]
     );
 
     // Create User
     await db.query(
-      `INSERT INTO users (id, organization_id, name, email, password_hash, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'active', NOW(), NOW())`,
-      [userId, orgId, name, email, hashedPassword]
+      `INSERT INTO users (id, organization_id, name, email, password_hash, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, 'active', NOW())`,
+      [userId, orgId, name.trim(), email.toLowerCase().trim(), hashedPassword]
     );
 
     // Generate Tokens
-    const accessToken = jwtService.generateAccessToken({ userId, organizationId: orgId, email });
-    const refreshToken = jwtService.generateRefreshToken({ userId, organizationId: orgId, email });
+    const accessToken = jwtService.generateAccessToken({ userId, organizationId: orgId, email: email.toLowerCase().trim() });
+    const refreshToken = jwtService.generateRefreshToken({ userId, organizationId: orgId, email: email.toLowerCase().trim() });
 
     // Store Session
     await db.query(
@@ -47,30 +53,37 @@ const register = async (req, res) => {
 
     // Send verification email in background
     const verifyToken = crypto.randomBytes(24).toString('hex');
-    emailService.sendVerificationEmail(email, verifyToken).catch(() => {});
+    emailService.sendVerificationEmail(email.toLowerCase().trim(), verifyToken).catch((err) => {
+      console.warn('Verification email error (non-fatal):', err.message);
+    });
 
     return res.status(201).json(
       successResponse({
         access_token: accessToken,
         refresh_token: refreshToken,
-        user: { id: userId, organization_id: orgId, name, email },
+        user: { id: userId, organization_id: orgId, name: name.trim(), email: email.toLowerCase().trim() },
         organization_id: orgId,
       })
     );
   } catch (error) {
-    console.error('Register error:', error.message);
-    return res.status(500).json(errorResponse('Registration failed'));
+    console.error('Register error:', error);
+    return res.status(500).json(errorResponse(error.message || 'Registration failed'));
   }
 };
 
 // 2. LOGIN
 const login = async (req, res) => {
   try {
-    const { email, password } = req.validatedData;
+    const data = req.validatedData || req.body || {};
+    const { email, password } = data;
+
+    if (!email || !password) {
+      return res.status(400).json(errorResponse('Email and password are required'));
+    }
 
     const { rows } = await db.query(
       `SELECT id, organization_id, name, email, password_hash FROM users WHERE email = $1 AND deleted_at IS NULL LIMIT 1`,
-      [email]
+      [email.toLowerCase().trim()]
     );
 
     if (rows.length === 0) {
@@ -110,15 +123,18 @@ const login = async (req, res) => {
       })
     );
   } catch (error) {
-    console.error('Login error:', error.message);
-    return res.status(500).json(errorResponse('Login failed'));
+    console.error('Login error:', error);
+    return res.status(500).json(errorResponse(error.message || 'Login failed'));
   }
 };
 
 // 3. REFRESH TOKEN
 const refreshToken = async (req, res) => {
   try {
-    const { refresh_token } = req.validatedData;
+    const data = req.validatedData || req.body || {};
+    const { refresh_token } = data;
+    if (!refresh_token) return res.status(400).json(errorResponse('refresh_token is required'));
+
     const decoded = jwtService.verifyRefreshToken(refresh_token);
 
     const { rows } = await db.query(
@@ -145,7 +161,7 @@ const refreshToken = async (req, res) => {
 // 4. LOGOUT
 const logout = async (req, res) => {
   try {
-    const { refresh_token } = req.body;
+    const { refresh_token } = req.body || {};
     if (refresh_token) {
       await db.query('UPDATE sessions SET revoked_at = NOW() WHERE refresh_token = $1', [refresh_token]);
     }
@@ -158,10 +174,14 @@ const logout = async (req, res) => {
 // 5. VERIFY EMAIL
 const verifyEmail = async (req, res) => {
   try {
-    const token = req.params.token || req.body.token;
+    const token = req.params?.token || req.body?.token || req.query?.token;
     if (!token) return res.status(400).json(errorResponse('Token is required'));
 
-    // In a full flow we can mark email verified for the user
+    const email = req.query?.email || req.body?.email;
+    if (email) {
+      await db.query(`UPDATE users SET email_verified_at = NOW() WHERE email = $1`, [email.toLowerCase().trim()]);
+    }
+
     return res.status(200).json(successResponse({ message: 'Email verified successfully' }));
   } catch (error) {
     return res.status(500).json(errorResponse('Email verification failed'));
@@ -171,9 +191,11 @@ const verifyEmail = async (req, res) => {
 // 6. RESEND VERIFICATION EMAIL
 const resendVerification = async (req, res) => {
   try {
-    const { email } = req.validatedData;
+    const { email } = req.validatedData || req.body || {};
+    if (!email) return res.status(400).json(errorResponse('Email is required'));
+
     const verifyToken = crypto.randomBytes(24).toString('hex');
-    await emailService.sendVerificationEmail(email, verifyToken);
+    await emailService.sendVerificationEmail(email.toLowerCase().trim(), verifyToken);
     return res.status(200).json(successResponse({ message: 'Verification email sent' }));
   } catch (error) {
     return res.status(500).json(errorResponse('Failed to resend verification email'));
@@ -183,8 +205,10 @@ const resendVerification = async (req, res) => {
 // 7. FORGOT PASSWORD
 const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.validatedData;
-    const { rows } = await db.query('SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL LIMIT 1', [email]);
+    const { email } = req.validatedData || req.body || {};
+    if (!email) return res.status(400).json(errorResponse('Email is required'));
+
+    const { rows } = await db.query('SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL LIMIT 1', [email.toLowerCase().trim()]);
 
     if (rows.length > 0) {
       const resetToken = crypto.randomBytes(32).toString('hex');
@@ -196,7 +220,7 @@ const forgotPassword = async (req, res) => {
         [crypto.randomUUID(), rows[0].id, tokenHash]
       );
 
-      await emailService.sendPasswordResetEmail(email, resetToken);
+      await emailService.sendPasswordResetEmail(email.toLowerCase().trim(), resetToken);
     }
 
     return res.status(200).json(successResponse({ message: 'Password reset link sent if account exists' }));
@@ -209,7 +233,9 @@ const forgotPassword = async (req, res) => {
 // 8. RESET PASSWORD
 const resetPassword = async (req, res) => {
   try {
-    const { token, new_password } = req.validatedData;
+    const { token, new_password } = req.validatedData || req.body || {};
+    if (!token || !new_password) return res.status(400).json(errorResponse('Token and new_password are required'));
+
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
     const { rows } = await db.query(
@@ -225,7 +251,7 @@ const resetPassword = async (req, res) => {
     const { id: tokenId, user_id: userId } = rows[0];
     const hashedPassword = await bcrypt.hash(new_password, 10);
 
-    await db.query('UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2', [hashedPassword, userId]);
+    await db.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hashedPassword, userId]);
     await db.query('UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1', [tokenId]);
 
     return res.status(200).json(successResponse({ message: 'Password reset successfully' }));

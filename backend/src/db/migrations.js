@@ -23,8 +23,11 @@ const runMigrations = async () => {
       status TEXT NOT NULL DEFAULT 'active',
       timezone TEXT NOT NULL DEFAULT 'UTC',
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
       deleted_at TIMESTAMP WITH TIME ZONE
     )`,
+    // Ensure updated_at exists on existing DBs (safe to run every time)
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()`,
 
     // Sessions
     `CREATE TABLE IF NOT EXISTS sessions (
